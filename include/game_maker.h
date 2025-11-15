@@ -21,7 +21,6 @@ typedef enum {
     GM_MODE_PALETTE_EDITOR,
     GM_MODE_SCRIPT_EDITOR,
     GM_MODE_ROM_INFO,
-    GM_MODE_SCRIPT_EDITOR,
     GM_MODE_EXIT
 } GameMakerMode;
 
@@ -63,17 +62,14 @@ typedef struct {
     bool modified;           /* Whether palette has been modified */
 } PaletteEditor;
 
-/* Script command structure */
+/* Script editor command (different from ScriptCommand in script.h) */
 typedef struct {
-    char command[64];        /* Command string */
-    u32 address;             /* Target address */
-    u8 value;                /* Value to set */
-    u16 length;              /* Length for operations */
-} ScriptCommand;
+    char command[256];       /* Command string as typed by user */
+} GameMakerScriptCommand;
 
 /* Script editor state */
 typedef struct {
-    ScriptCommand commands[256];  /* Script commands */
+    GameMakerScriptCommand commands[256];  /* Script commands */
     u16 num_commands;             /* Number of commands */
     u16 current_command;          /* Current command index */
     char script_buffer[4096];     /* Script text buffer */
@@ -258,6 +254,8 @@ int gamemaker_script_save(const GameMaker *gm, const char *filename);
  * Execute entire script
  */
 int gamemaker_script_run(GameMaker *gm);
+
+/*
  * Execute script from file
  */
 int gamemaker_script_execute_file(GameMaker *gm, const char *filename);

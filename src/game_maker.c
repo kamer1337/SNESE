@@ -196,27 +196,8 @@ int gamemaker_save_rom(GameMaker *gm, const char *filename) {
 /* Tile Editor implementation */
 
 void gamemaker_tile_editor(GameMaker *gm) {
-    char input[64];
-    char choice;
-    bool editing = true;
-    
-    printf("\n=== Tile Editor ===\n");
-    
-    /* Load initial tile */
-    gamemaker_tile_load(gm, gm->tile_editor.current_tile);
-    
-    while (editing) {
-        printf("\n");
-        gamemaker_tile_editor_display(gm);
-        
-        printf("\nTile Editor Commands:\n");
-        printf("  [n] Next tile    [p] Previous tile\n");
-        printf("  [g] Go to tile   [e] Edit pixel\n");
-        printf("  [c] Change palette   [z] Zoom in/out\n");
-        printf("  [s] Save tile    [x] Export tile data\n");
-        printf("  [i] Import tile  [v] View tile hex\n");
-        printf("  [q] Return to main menu\n");
     char input[256];
+    char choice;
     bool editing = true;
     
     printf("\n=== Tile Editor ===\n");
@@ -544,30 +525,6 @@ void gamemaker_tile_editor_display(const GameMaker *gm) {
 }
 
 void gamemaker_tile_edit_pixel(GameMaker *gm, u8 x, u8 y, u8 color) {
-    if (!gm->mem || x > 7 || y > 7 || color > 3) {
-        return;
-    }
-    
-    u16 addr = gm->tile_editor.tile_addr + y * 2;
-    
-    if (addr + 1 >= VRAM_SIZE) {
-        return;
-    }
-    
-    u8 bit_mask = 1 << (7 - x);
-    
-    /* Set or clear bit in plane 0 */
-    if (color & 1) {
-        gm->mem->vram[addr] |= bit_mask;
-    } else {
-        gm->mem->vram[addr] &= ~bit_mask;
-    }
-    
-    /* Set or clear bit in plane 1 */
-    if (color & 2) {
-        gm->mem->vram[addr + 1] |= bit_mask;
-    } else {
-        gm->mem->vram[addr + 1] &= ~bit_mask;
     /* SNES tiles are stored in 2bpp, 4bpp, or 8bpp format
      * For simplicity, we'll handle 2bpp (4 colors) here
      * Each tile is 8x8 pixels, stored as bitplanes
@@ -1022,22 +979,6 @@ void gamemaker_sprite_update(GameMaker *gm) {
 /* Tilemap Editor implementation */
 
 void gamemaker_tilemap_editor(GameMaker *gm) {
-    char input[64];
-    char choice;
-    bool editing = true;
-    
-    printf("\n=== Tilemap Editor ===\n");
-    
-    while (editing) {
-        printf("\n");
-        gamemaker_tilemap_editor_display(gm);
-        
-        printf("\nTilemap Editor Commands:\n");
-        printf("  [w/a/s/d] Move cursor  [p] Place tile\n");
-        printf("  [t] Select tile        [c] Change palette\n");
-        printf("  [l] Change layer (BG1-4)  [m] Toggle paint mode\n");
-        printf("  [v] View tilemap area  [e] Export tilemap\n");
-        printf("  [i] Import tilemap     [q] Return to main menu\n");
     char input[256];
     bool editing = true;
     
