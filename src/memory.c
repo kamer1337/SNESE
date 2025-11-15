@@ -12,6 +12,8 @@ void memory_init(Memory *mem) {
 }
 
 void memory_reset(Memory *mem) {
+    int i;
+    
     /* Clear Work RAM */
     memset(mem->wram, 0, WRAM_SIZE);
     
@@ -28,7 +30,17 @@ void memory_reset(Memory *mem) {
     memset(mem->io_registers, 0, sizeof(mem->io_registers));
     
     /* Reset DMA channels */
-    memset(mem->dma_enabled, 0, sizeof(mem->dma_enabled));
+    for (i = 0; i < 8; i++) {
+        mem->dma[i].control = 0;
+        mem->dma[i].dest_register = 0;
+        mem->dma[i].src_addr = 0;
+        mem->dma[i].src_bank = 0;
+        mem->dma[i].transfer_size = 0;
+        mem->dma[i].enabled = false;
+        mem->dma[i].hdma_enabled = false;
+        mem->dma[i].hdma_table_bank = 0;
+        mem->dma[i].hdma_table_addr = 0;
+    }
 }
 
 void memory_set_cartridge(Memory *mem, Cartridge *cart) {
@@ -126,27 +138,70 @@ u32 memory_read24(Memory *mem, u32 address) {
 }
 
 void memory_dma_transfer(Memory *mem, u8 channel) {
-    /* DMA implementation for Phase 4 */
-    /* DMA transfers data between memory regions */
-    /* Channels 0-7 available */
+    DMAChannel *dma;
+    u32 src_addr, dest_addr;
+    u16 count;
+    u8 direction, increment;
+    u8 value;
     
     if (channel >= 8) {
         return;
     }
     
-    /* Enable the DMA channel */
-    mem->dma_enabled[channel] = true;
+    dma = &mem->dma[channel];
     
-    /* TODO: Full DMA implementation would:
-     * 1. Read DMA control registers for the channel
-     * 2. Determine source and destination addresses
-     * 3. Determine transfer size and direction
-     * 4. Perform the actual memory copy
-     * 5. Update DMA channel registers
-     * 6. Take appropriate number of CPU cycles
-     */
+    if (!dma->enabled || dma->transfer_size == 0) {
+        return;
+    }
     
-    /* For now, this is a placeholder that marks the channel as active */
+    /* Get transfer direction and addressing mode from control register */
+    direction = (dma->control >> 7) & 1;  /* 0=CPU->PPU, 1=PPU->CPU */
+    increment = (dma->control >> 3) & 3;  /* 0=increment, 1=fixed, 2=decrement */
+    
+    (void)direction;  /* Typically CPU->PPU for DMA */
+    
+    /* Build source address */
+    src_addr = (dma->src_bank << 16) | dma->src_addr;
+    
+    /* Destination is a PPU register (B-bus) in $2100-$21FF range */
+    dest_addr = 0x2100 + dma->dest_register;
+    
+    /* Perform transfer */
+    for (count = 0; count < dma->transfer_size; count++) {
+        /* Read from source */
+        value = memory_read(mem, src_addr);
+        
+        /* Write to destination */
+        if (dest_addr >= 0x2100 && dest_addr < 0x2200) {
+            /* PPU register write */
+            mem->io_registers[dest_addr - 0x2000] = value;
+            
+            /* Handle specific PPU register writes */
+            if (dest_addr == 0x2118 || dest_addr == 0x2119) {
+                /* VRAM write */
+                /* Would need to properly handle VRAM address and increment */
+            }
+        }
+        
+        /* Update source address based on increment mode */
+        switch (increment) {
+            case 0:  /* Increment */
+                src_addr++;
+                break;
+            case 1:  /* Fixed */
+                /* Don't change address */
+                break;
+            case 2:  /* Decrement */
+                src_addr--;
+                break;
+        }
+    }
+    
+    /* Clear transfer size to indicate completion */
+    dma->transfer_size = 0;
+    dma->enabled = false;
+    
+    /* Note: Real SNES takes 8 cycles per byte + overhead */
 }
 
 u32 memory_map_address(const Memory *mem, u8 bank, u16 offset) {
@@ -175,4 +230,29 @@ void memory_dump(const Memory *mem, u32 start, u32 length) {
         printf("\n");
     }
     printf("\n");
+}
+
+void memory_dma_setup(Memory *mem, u8 channel, u8 control, u8 dest_reg,
+                      u32 src_addr, u16 size) {
+    if (channel >= 8) {
+        return;
+    }
+    
+    mem->dma[channel].control = control;
+    mem->dma[channel].dest_register = dest_reg;
+    mem->dma[channel].src_bank = (src_addr >> 16) & 0xFF;
+    mem->dma[channel].src_addr = src_addr & 0xFFFF;
+    mem->dma[channel].transfer_size = size;
+    mem->dma[channel].enabled = true;
+}
+
+void memory_dma_trigger(Memory *mem, u8 channels_mask) {
+    int i;
+    
+    /* Trigger all enabled channels */
+    for (i = 0; i < 8; i++) {
+        if (channels_mask & (1 << i)) {
+            memory_dma_transfer(mem, i);
+        }
+    }
 }
