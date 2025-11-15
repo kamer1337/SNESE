@@ -20,9 +20,13 @@
 - ✅ README documentation added
 - ✅ Project structure fully implemented
 - ✅ ROM loader completed with .sfc/.smc support
-- ✅ 124 CPU opcodes implemented with addressing modes
+- ✅ 126 CPU opcodes implemented with all addressing modes
+- ✅ CPU breakpoint support added
 - ✅ Memory management with bank switching
+- ✅ DMA/HDMA transfer system implemented
+- ✅ PPU tile and sprite rendering
 - ✅ Basic PPU, Input, and APU structures
+- ✅ Comprehensive API documentation and examples
 
 ### Next Milestones
 - [ ] Complete PPU rendering (tile decoding, background layers, sprites)
