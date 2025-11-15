@@ -569,6 +569,433 @@ u32 cpu_step(CPU *cpu) {
             }
             break;
             
+        /* Subroutine instructions */
+        case 0x20:  /* JSR - Jump to Subroutine */
+            {
+                u16 addr = memory_read16(&g_memory, (cpu->pbr << 16) | cpu->pc);
+                cpu->pc += 2;
+                cpu_push16(cpu, cpu->pc - 1);
+                cpu->pc = addr;
+                cpu->instruction_cycles = 6;
+            }
+            break;
+            
+        case 0x60:  /* RTS - Return from Subroutine */
+            {
+                u16 addr = cpu_pull16(cpu);
+                cpu->pc = addr + 1;
+                cpu->instruction_cycles = 6;
+            }
+            break;
+            
+        case 0x40:  /* RTI - Return from Interrupt */
+            cpu->p = cpu_pull8(cpu);
+            cpu->pc = cpu_pull16(cpu);
+            cpu->pbr = cpu_pull8(cpu);
+            cpu->instruction_cycles = 6;
+            break;
+            
+        case 0x6B:  /* RTL - Return from Subroutine Long */
+            {
+                u16 addr = cpu_pull16(cpu);
+                cpu->pbr = cpu_pull8(cpu);
+                cpu->pc = addr + 1;
+                cpu->instruction_cycles = 6;
+            }
+            break;
+            
+        /* Store instructions - absolute */
+        case 0x8D:  /* STA absolute */
+            {
+                u16 addr = memory_read16(&g_memory, (cpu->pbr << 16) | cpu->pc);
+                cpu->pc += 2;
+                if (cpu_get_flag(cpu, FLAG_M)) {
+                    memory_write(&g_memory, (cpu->dbr << 16) | addr, cpu->a & 0xFF);
+                    cpu->instruction_cycles = 4;
+                } else {
+                    memory_write16(&g_memory, (cpu->dbr << 16) | addr, cpu->a);
+                    cpu->instruction_cycles = 5;
+                }
+            }
+            break;
+            
+        case 0x8E:  /* STX absolute */
+            {
+                u16 addr = memory_read16(&g_memory, (cpu->pbr << 16) | cpu->pc);
+                cpu->pc += 2;
+                if (cpu_get_flag(cpu, FLAG_X)) {
+                    memory_write(&g_memory, (cpu->dbr << 16) | addr, cpu->x & 0xFF);
+                    cpu->instruction_cycles = 4;
+                } else {
+                    memory_write16(&g_memory, (cpu->dbr << 16) | addr, cpu->x);
+                    cpu->instruction_cycles = 5;
+                }
+            }
+            break;
+            
+        case 0x8C:  /* STY absolute */
+            {
+                u16 addr = memory_read16(&g_memory, (cpu->pbr << 16) | cpu->pc);
+                cpu->pc += 2;
+                if (cpu_get_flag(cpu, FLAG_X)) {
+                    memory_write(&g_memory, (cpu->dbr << 16) | addr, cpu->y & 0xFF);
+                    cpu->instruction_cycles = 4;
+                } else {
+                    memory_write16(&g_memory, (cpu->dbr << 16) | addr, cpu->y);
+                    cpu->instruction_cycles = 5;
+                }
+            }
+            break;
+            
+        case 0x9C:  /* STZ absolute */
+            {
+                u16 addr = memory_read16(&g_memory, (cpu->pbr << 16) | cpu->pc);
+                cpu->pc += 2;
+                if (cpu_get_flag(cpu, FLAG_M)) {
+                    memory_write(&g_memory, (cpu->dbr << 16) | addr, 0);
+                    cpu->instruction_cycles = 4;
+                } else {
+                    memory_write16(&g_memory, (cpu->dbr << 16) | addr, 0);
+                    cpu->instruction_cycles = 5;
+                }
+            }
+            break;
+            
+        /* Load instructions - absolute */
+        case 0xAD:  /* LDA absolute */
+            {
+                u16 addr = memory_read16(&g_memory, (cpu->pbr << 16) | cpu->pc);
+                cpu->pc += 2;
+                if (cpu_get_flag(cpu, FLAG_M)) {
+                    cpu->a = (cpu->a & 0xFF00) | memory_read(&g_memory, (cpu->dbr << 16) | addr);
+                    cpu_set_flag(cpu, FLAG_Z, (cpu->a & 0xFF) == 0);
+                    cpu_set_flag(cpu, FLAG_N, (cpu->a & 0x80) != 0);
+                    cpu->instruction_cycles = 4;
+                } else {
+                    cpu->a = memory_read16(&g_memory, (cpu->dbr << 16) | addr);
+                    cpu_set_flag(cpu, FLAG_Z, cpu->a == 0);
+                    cpu_set_flag(cpu, FLAG_N, (cpu->a & 0x8000) != 0);
+                    cpu->instruction_cycles = 5;
+                }
+            }
+            break;
+            
+        case 0xAE:  /* LDX absolute */
+            {
+                u16 addr = memory_read16(&g_memory, (cpu->pbr << 16) | cpu->pc);
+                cpu->pc += 2;
+                if (cpu_get_flag(cpu, FLAG_X)) {
+                    cpu->x = memory_read(&g_memory, (cpu->dbr << 16) | addr);
+                    cpu_set_flag(cpu, FLAG_Z, (cpu->x & 0xFF) == 0);
+                    cpu_set_flag(cpu, FLAG_N, (cpu->x & 0x80) != 0);
+                    cpu->instruction_cycles = 4;
+                } else {
+                    cpu->x = memory_read16(&g_memory, (cpu->dbr << 16) | addr);
+                    cpu_set_flag(cpu, FLAG_Z, cpu->x == 0);
+                    cpu_set_flag(cpu, FLAG_N, (cpu->x & 0x8000) != 0);
+                    cpu->instruction_cycles = 5;
+                }
+            }
+            break;
+            
+        case 0xAC:  /* LDY absolute */
+            {
+                u16 addr = memory_read16(&g_memory, (cpu->pbr << 16) | cpu->pc);
+                cpu->pc += 2;
+                if (cpu_get_flag(cpu, FLAG_X)) {
+                    cpu->y = memory_read(&g_memory, (cpu->dbr << 16) | addr);
+                    cpu_set_flag(cpu, FLAG_Z, (cpu->y & 0xFF) == 0);
+                    cpu_set_flag(cpu, FLAG_N, (cpu->y & 0x80) != 0);
+                    cpu->instruction_cycles = 4;
+                } else {
+                    cpu->y = memory_read16(&g_memory, (cpu->dbr << 16) | addr);
+                    cpu_set_flag(cpu, FLAG_Z, cpu->y == 0);
+                    cpu_set_flag(cpu, FLAG_N, (cpu->y & 0x8000) != 0);
+                    cpu->instruction_cycles = 5;
+                }
+            }
+            break;
+            
+        /* Arithmetic - ADC */
+        case 0x69:  /* ADC immediate */
+            {
+                if (cpu_get_flag(cpu, FLAG_M)) {
+                    u8 operand = memory_read(&g_memory, (cpu->pbr << 16) | cpu->pc);
+                    cpu->pc++;
+                    u8 a = cpu->a & 0xFF;
+                    u16 result = a + operand + (cpu_get_flag(cpu, FLAG_C) ? 1 : 0);
+                    cpu->a = (cpu->a & 0xFF00) | (result & 0xFF);
+                    cpu_set_flag(cpu, FLAG_C, result > 0xFF);
+                    cpu_set_flag(cpu, FLAG_Z, (result & 0xFF) == 0);
+                    cpu_set_flag(cpu, FLAG_N, (result & 0x80) != 0);
+                    cpu_set_flag(cpu, FLAG_V, ((a ^ result) & (operand ^ result) & 0x80) != 0);
+                    cpu->instruction_cycles = 2;
+                } else {
+                    u16 operand = memory_read16(&g_memory, (cpu->pbr << 16) | cpu->pc);
+                    cpu->pc += 2;
+                    u32 result = cpu->a + operand + (cpu_get_flag(cpu, FLAG_C) ? 1 : 0);
+                    cpu_set_flag(cpu, FLAG_C, result > 0xFFFF);
+                    cpu->a = result & 0xFFFF;
+                    cpu_set_flag(cpu, FLAG_Z, cpu->a == 0);
+                    cpu_set_flag(cpu, FLAG_N, (cpu->a & 0x8000) != 0);
+                    cpu_set_flag(cpu, FLAG_V, ((cpu->a ^ result) & (operand ^ result) & 0x8000) != 0);
+                    cpu->instruction_cycles = 3;
+                }
+            }
+            break;
+            
+        /* Arithmetic - SBC */
+        case 0xE9:  /* SBC immediate */
+            {
+                if (cpu_get_flag(cpu, FLAG_M)) {
+                    u8 operand = memory_read(&g_memory, (cpu->pbr << 16) | cpu->pc);
+                    cpu->pc++;
+                    u8 a = cpu->a & 0xFF;
+                    u16 result = a - operand - (cpu_get_flag(cpu, FLAG_C) ? 0 : 1);
+                    cpu->a = (cpu->a & 0xFF00) | (result & 0xFF);
+                    cpu_set_flag(cpu, FLAG_C, result <= 0xFF);
+                    cpu_set_flag(cpu, FLAG_Z, (result & 0xFF) == 0);
+                    cpu_set_flag(cpu, FLAG_N, (result & 0x80) != 0);
+                    cpu_set_flag(cpu, FLAG_V, ((a ^ operand) & (a ^ result) & 0x80) != 0);
+                    cpu->instruction_cycles = 2;
+                } else {
+                    u16 operand = memory_read16(&g_memory, (cpu->pbr << 16) | cpu->pc);
+                    cpu->pc += 2;
+                    u32 result = cpu->a - operand - (cpu_get_flag(cpu, FLAG_C) ? 0 : 1);
+                    cpu_set_flag(cpu, FLAG_C, result <= 0xFFFF);
+                    cpu->a = result & 0xFFFF;
+                    cpu_set_flag(cpu, FLAG_Z, cpu->a == 0);
+                    cpu_set_flag(cpu, FLAG_N, (cpu->a & 0x8000) != 0);
+                    cpu_set_flag(cpu, FLAG_V, ((cpu->a ^ operand) & (cpu->a ^ result) & 0x8000) != 0);
+                    cpu->instruction_cycles = 3;
+                }
+            }
+            break;
+            
+        /* Logic operations */
+        case 0x29:  /* AND immediate */
+            {
+                if (cpu_get_flag(cpu, FLAG_M)) {
+                    u8 operand = memory_read(&g_memory, (cpu->pbr << 16) | cpu->pc);
+                    cpu->pc++;
+                    cpu->a = (cpu->a & 0xFF00) | ((cpu->a & operand) & 0xFF);
+                    cpu_set_flag(cpu, FLAG_Z, (cpu->a & 0xFF) == 0);
+                    cpu_set_flag(cpu, FLAG_N, (cpu->a & 0x80) != 0);
+                    cpu->instruction_cycles = 2;
+                } else {
+                    u16 operand = memory_read16(&g_memory, (cpu->pbr << 16) | cpu->pc);
+                    cpu->pc += 2;
+                    cpu->a &= operand;
+                    cpu_set_flag(cpu, FLAG_Z, cpu->a == 0);
+                    cpu_set_flag(cpu, FLAG_N, (cpu->a & 0x8000) != 0);
+                    cpu->instruction_cycles = 3;
+                }
+            }
+            break;
+            
+        case 0x09:  /* ORA immediate */
+            {
+                if (cpu_get_flag(cpu, FLAG_M)) {
+                    u8 operand = memory_read(&g_memory, (cpu->pbr << 16) | cpu->pc);
+                    cpu->pc++;
+                    cpu->a = (cpu->a & 0xFF00) | ((cpu->a | operand) & 0xFF);
+                    cpu_set_flag(cpu, FLAG_Z, (cpu->a & 0xFF) == 0);
+                    cpu_set_flag(cpu, FLAG_N, (cpu->a & 0x80) != 0);
+                    cpu->instruction_cycles = 2;
+                } else {
+                    u16 operand = memory_read16(&g_memory, (cpu->pbr << 16) | cpu->pc);
+                    cpu->pc += 2;
+                    cpu->a |= operand;
+                    cpu_set_flag(cpu, FLAG_Z, cpu->a == 0);
+                    cpu_set_flag(cpu, FLAG_N, (cpu->a & 0x8000) != 0);
+                    cpu->instruction_cycles = 3;
+                }
+            }
+            break;
+            
+        case 0x49:  /* EOR immediate */
+            {
+                if (cpu_get_flag(cpu, FLAG_M)) {
+                    u8 operand = memory_read(&g_memory, (cpu->pbr << 16) | cpu->pc);
+                    cpu->pc++;
+                    cpu->a = (cpu->a & 0xFF00) | ((cpu->a ^ operand) & 0xFF);
+                    cpu_set_flag(cpu, FLAG_Z, (cpu->a & 0xFF) == 0);
+                    cpu_set_flag(cpu, FLAG_N, (cpu->a & 0x80) != 0);
+                    cpu->instruction_cycles = 2;
+                } else {
+                    u16 operand = memory_read16(&g_memory, (cpu->pbr << 16) | cpu->pc);
+                    cpu->pc += 2;
+                    cpu->a ^= operand;
+                    cpu_set_flag(cpu, FLAG_Z, cpu->a == 0);
+                    cpu_set_flag(cpu, FLAG_N, (cpu->a & 0x8000) != 0);
+                    cpu->instruction_cycles = 3;
+                }
+            }
+            break;
+            
+        /* Comparison operations */
+        case 0xC9:  /* CMP immediate */
+            {
+                if (cpu_get_flag(cpu, FLAG_M)) {
+                    u8 operand = memory_read(&g_memory, (cpu->pbr << 16) | cpu->pc);
+                    cpu->pc++;
+                    u8 a = cpu->a & 0xFF;
+                    u8 result = a - operand;
+                    cpu_set_flag(cpu, FLAG_C, a >= operand);
+                    cpu_set_flag(cpu, FLAG_Z, result == 0);
+                    cpu_set_flag(cpu, FLAG_N, (result & 0x80) != 0);
+                    cpu->instruction_cycles = 2;
+                } else {
+                    u16 operand = memory_read16(&g_memory, (cpu->pbr << 16) | cpu->pc);
+                    cpu->pc += 2;
+                    u16 result = cpu->a - operand;
+                    cpu_set_flag(cpu, FLAG_C, cpu->a >= operand);
+                    cpu_set_flag(cpu, FLAG_Z, result == 0);
+                    cpu_set_flag(cpu, FLAG_N, (result & 0x8000) != 0);
+                    cpu->instruction_cycles = 3;
+                }
+            }
+            break;
+            
+        case 0xE0:  /* CPX immediate */
+            {
+                if (cpu_get_flag(cpu, FLAG_X)) {
+                    u8 operand = memory_read(&g_memory, (cpu->pbr << 16) | cpu->pc);
+                    cpu->pc++;
+                    u8 x = cpu->x & 0xFF;
+                    u8 result = x - operand;
+                    cpu_set_flag(cpu, FLAG_C, x >= operand);
+                    cpu_set_flag(cpu, FLAG_Z, result == 0);
+                    cpu_set_flag(cpu, FLAG_N, (result & 0x80) != 0);
+                    cpu->instruction_cycles = 2;
+                } else {
+                    u16 operand = memory_read16(&g_memory, (cpu->pbr << 16) | cpu->pc);
+                    cpu->pc += 2;
+                    u16 result = cpu->x - operand;
+                    cpu_set_flag(cpu, FLAG_C, cpu->x >= operand);
+                    cpu_set_flag(cpu, FLAG_Z, result == 0);
+                    cpu_set_flag(cpu, FLAG_N, (result & 0x8000) != 0);
+                    cpu->instruction_cycles = 3;
+                }
+            }
+            break;
+            
+        case 0xC0:  /* CPY immediate */
+            {
+                if (cpu_get_flag(cpu, FLAG_X)) {
+                    u8 operand = memory_read(&g_memory, (cpu->pbr << 16) | cpu->pc);
+                    cpu->pc++;
+                    u8 y = cpu->y & 0xFF;
+                    u8 result = y - operand;
+                    cpu_set_flag(cpu, FLAG_C, y >= operand);
+                    cpu_set_flag(cpu, FLAG_Z, result == 0);
+                    cpu_set_flag(cpu, FLAG_N, (result & 0x80) != 0);
+                    cpu->instruction_cycles = 2;
+                } else {
+                    u16 operand = memory_read16(&g_memory, (cpu->pbr << 16) | cpu->pc);
+                    cpu->pc += 2;
+                    u16 result = cpu->y - operand;
+                    cpu_set_flag(cpu, FLAG_C, cpu->y >= operand);
+                    cpu_set_flag(cpu, FLAG_Z, result == 0);
+                    cpu_set_flag(cpu, FLAG_N, (result & 0x8000) != 0);
+                    cpu->instruction_cycles = 3;
+                }
+            }
+            break;
+            
+        /* Additional branch instructions */
+        case 0x50:  /* BVC - Branch if Overflow Clear */
+            {
+                s8 offset = (s8)memory_read(&g_memory, (cpu->pbr << 16) | cpu->pc);
+                cpu->pc++;
+                if (!cpu_get_flag(cpu, FLAG_V)) {
+                    cpu->pc += offset;
+                    cpu->instruction_cycles = 3;
+                } else {
+                    cpu->instruction_cycles = 2;
+                }
+            }
+            break;
+            
+        case 0x70:  /* BVS - Branch if Overflow Set */
+            {
+                s8 offset = (s8)memory_read(&g_memory, (cpu->pbr << 16) | cpu->pc);
+                cpu->pc++;
+                if (cpu_get_flag(cpu, FLAG_V)) {
+                    cpu->pc += offset;
+                    cpu->instruction_cycles = 3;
+                } else {
+                    cpu->instruction_cycles = 2;
+                }
+            }
+            break;
+            
+        /* Stack pointer operations */
+        case 0xBA:  /* TSX - Transfer SP to X */
+            if (cpu_get_flag(cpu, FLAG_X)) {
+                cpu->x = cpu->sp & 0xFF;
+                cpu_set_flag(cpu, FLAG_Z, (cpu->x & 0xFF) == 0);
+                cpu_set_flag(cpu, FLAG_N, (cpu->x & 0x80) != 0);
+            } else {
+                cpu->x = cpu->sp;
+                cpu_set_flag(cpu, FLAG_Z, cpu->x == 0);
+                cpu_set_flag(cpu, FLAG_N, (cpu->x & 0x8000) != 0);
+            }
+            cpu->instruction_cycles = 2;
+            break;
+            
+        case 0x9A:  /* TXS - Transfer X to SP */
+            if (cpu->e) {
+                cpu->sp = 0x0100 | (cpu->x & 0xFF);
+            } else {
+                cpu->sp = cpu->x;
+            }
+            cpu->instruction_cycles = 2;
+            break;
+            
+        /* Additional transfer operations */
+        case 0x5B:  /* TCD - Transfer C (16-bit A) to D */
+            cpu->d = cpu->a;
+            cpu_set_flag(cpu, FLAG_Z, cpu->d == 0);
+            cpu_set_flag(cpu, FLAG_N, (cpu->d & 0x8000) != 0);
+            cpu->instruction_cycles = 2;
+            break;
+            
+        case 0x7B:  /* TDC - Transfer D to C (16-bit A) */
+            cpu->a = cpu->d;
+            cpu_set_flag(cpu, FLAG_Z, cpu->a == 0);
+            cpu_set_flag(cpu, FLAG_N, (cpu->a & 0x8000) != 0);
+            cpu->instruction_cycles = 2;
+            break;
+            
+        case 0x1B:  /* TCS - Transfer C (16-bit A) to SP */
+            cpu->sp = cpu->a;
+            cpu->instruction_cycles = 2;
+            break;
+            
+        case 0x3B:  /* TSC - Transfer SP to C (16-bit A) */
+            cpu->a = cpu->sp;
+            cpu_set_flag(cpu, FLAG_Z, cpu->a == 0);
+            cpu_set_flag(cpu, FLAG_N, (cpu->a & 0x8000) != 0);
+            cpu->instruction_cycles = 2;
+            break;
+            
+        /* XCE - Exchange Carry and Emulation flags */
+        case 0xFB:
+            {
+                u8 temp = cpu->e;
+                cpu->e = cpu_get_flag(cpu, FLAG_C);
+                cpu_set_flag(cpu, FLAG_C, temp);
+                if (cpu->e) {
+                    /* Switching to emulation mode */
+                    cpu_set_flag(cpu, FLAG_M, true);
+                    cpu_set_flag(cpu, FLAG_X, true);
+                    cpu->sp = 0x0100 | (cpu->sp & 0xFF);
+                }
+                cpu->instruction_cycles = 2;
+            }
+            break;
+            
         default:
             /* Unimplemented opcode */
             printf("Unimplemented opcode: $%02X at $%02X:%04X\n", 
@@ -701,6 +1128,144 @@ void cpu_disassemble(const CPU *cpu, char *buffer, size_t size) {
             snprintf(buffer, size, "JML $%06X",
                     memory_read24(&g_memory, ((cpu->pbr << 16) | cpu->pc) + 1));
             break;
+            
+        /* Subroutine instructions */
+        case 0x20:
+            snprintf(buffer, size, "JSR $%04X",
+                    memory_read16(&g_memory, ((cpu->pbr << 16) | cpu->pc) + 1));
+            break;
+        case 0x60: snprintf(buffer, size, "RTS"); break;
+        case 0x40: snprintf(buffer, size, "RTI"); break;
+        case 0x6B: snprintf(buffer, size, "RTL"); break;
+            
+        /* Store instructions */
+        case 0x8D:
+            snprintf(buffer, size, "STA $%04X",
+                    memory_read16(&g_memory, ((cpu->pbr << 16) | cpu->pc) + 1));
+            break;
+        case 0x8E:
+            snprintf(buffer, size, "STX $%04X",
+                    memory_read16(&g_memory, ((cpu->pbr << 16) | cpu->pc) + 1));
+            break;
+        case 0x8C:
+            snprintf(buffer, size, "STY $%04X",
+                    memory_read16(&g_memory, ((cpu->pbr << 16) | cpu->pc) + 1));
+            break;
+        case 0x9C:
+            snprintf(buffer, size, "STZ $%04X",
+                    memory_read16(&g_memory, ((cpu->pbr << 16) | cpu->pc) + 1));
+            break;
+            
+        /* Load absolute */
+        case 0xAD:
+            snprintf(buffer, size, "LDA $%04X",
+                    memory_read16(&g_memory, ((cpu->pbr << 16) | cpu->pc) + 1));
+            break;
+        case 0xAE:
+            snprintf(buffer, size, "LDX $%04X",
+                    memory_read16(&g_memory, ((cpu->pbr << 16) | cpu->pc) + 1));
+            break;
+        case 0xAC:
+            snprintf(buffer, size, "LDY $%04X",
+                    memory_read16(&g_memory, ((cpu->pbr << 16) | cpu->pc) + 1));
+            break;
+            
+        /* Arithmetic */
+        case 0x69:
+            if (cpu_get_flag(cpu, FLAG_M)) {
+                snprintf(buffer, size, "ADC #$%02X",
+                        memory_read(&g_memory, ((cpu->pbr << 16) | cpu->pc) + 1));
+            } else {
+                snprintf(buffer, size, "ADC #$%04X",
+                        memory_read16(&g_memory, ((cpu->pbr << 16) | cpu->pc) + 1));
+            }
+            break;
+        case 0xE9:
+            if (cpu_get_flag(cpu, FLAG_M)) {
+                snprintf(buffer, size, "SBC #$%02X",
+                        memory_read(&g_memory, ((cpu->pbr << 16) | cpu->pc) + 1));
+            } else {
+                snprintf(buffer, size, "SBC #$%04X",
+                        memory_read16(&g_memory, ((cpu->pbr << 16) | cpu->pc) + 1));
+            }
+            break;
+            
+        /* Logic operations */
+        case 0x29:
+            if (cpu_get_flag(cpu, FLAG_M)) {
+                snprintf(buffer, size, "AND #$%02X",
+                        memory_read(&g_memory, ((cpu->pbr << 16) | cpu->pc) + 1));
+            } else {
+                snprintf(buffer, size, "AND #$%04X",
+                        memory_read16(&g_memory, ((cpu->pbr << 16) | cpu->pc) + 1));
+            }
+            break;
+        case 0x09:
+            if (cpu_get_flag(cpu, FLAG_M)) {
+                snprintf(buffer, size, "ORA #$%02X",
+                        memory_read(&g_memory, ((cpu->pbr << 16) | cpu->pc) + 1));
+            } else {
+                snprintf(buffer, size, "ORA #$%04X",
+                        memory_read16(&g_memory, ((cpu->pbr << 16) | cpu->pc) + 1));
+            }
+            break;
+        case 0x49:
+            if (cpu_get_flag(cpu, FLAG_M)) {
+                snprintf(buffer, size, "EOR #$%02X",
+                        memory_read(&g_memory, ((cpu->pbr << 16) | cpu->pc) + 1));
+            } else {
+                snprintf(buffer, size, "EOR #$%04X",
+                        memory_read16(&g_memory, ((cpu->pbr << 16) | cpu->pc) + 1));
+            }
+            break;
+            
+        /* Comparison operations */
+        case 0xC9:
+            if (cpu_get_flag(cpu, FLAG_M)) {
+                snprintf(buffer, size, "CMP #$%02X",
+                        memory_read(&g_memory, ((cpu->pbr << 16) | cpu->pc) + 1));
+            } else {
+                snprintf(buffer, size, "CMP #$%04X",
+                        memory_read16(&g_memory, ((cpu->pbr << 16) | cpu->pc) + 1));
+            }
+            break;
+        case 0xE0:
+            if (cpu_get_flag(cpu, FLAG_X)) {
+                snprintf(buffer, size, "CPX #$%02X",
+                        memory_read(&g_memory, ((cpu->pbr << 16) | cpu->pc) + 1));
+            } else {
+                snprintf(buffer, size, "CPX #$%04X",
+                        memory_read16(&g_memory, ((cpu->pbr << 16) | cpu->pc) + 1));
+            }
+            break;
+        case 0xC0:
+            if (cpu_get_flag(cpu, FLAG_X)) {
+                snprintf(buffer, size, "CPY #$%02X",
+                        memory_read(&g_memory, ((cpu->pbr << 16) | cpu->pc) + 1));
+            } else {
+                snprintf(buffer, size, "CPY #$%04X",
+                        memory_read16(&g_memory, ((cpu->pbr << 16) | cpu->pc) + 1));
+            }
+            break;
+            
+        /* Additional branches */
+        case 0x50:
+            snprintf(buffer, size, "BVC $%04X",
+                    cpu->pc + 2 + (s8)memory_read(&g_memory, ((cpu->pbr << 16) | cpu->pc) + 1));
+            break;
+        case 0x70:
+            snprintf(buffer, size, "BVS $%04X",
+                    cpu->pc + 2 + (s8)memory_read(&g_memory, ((cpu->pbr << 16) | cpu->pc) + 1));
+            break;
+            
+        /* Additional transfers */
+        case 0xBA: snprintf(buffer, size, "TSX"); break;
+        case 0x9A: snprintf(buffer, size, "TXS"); break;
+        case 0x5B: snprintf(buffer, size, "TCD"); break;
+        case 0x7B: snprintf(buffer, size, "TDC"); break;
+        case 0x1B: snprintf(buffer, size, "TCS"); break;
+        case 0x3B: snprintf(buffer, size, "TSC"); break;
+        case 0xFB: snprintf(buffer, size, "XCE"); break;
             
         default:
             snprintf(buffer, size, "??? ($%02X)", opcode);
