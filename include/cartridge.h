@@ -60,6 +60,10 @@ typedef struct {
     bool sram_battery;        /* Whether SRAM is battery-backed */
     
     char filename[256];       /* Original ROM filename */
+    
+    /* For ROM editing/backup */
+    u8 *rom_backup;           /* Backup of original ROM data */
+    bool has_backup;          /* Whether backup exists */
 } Cartridge;
 
 /* Function declarations */
@@ -105,5 +109,30 @@ u16 cartridge_calculate_checksum(const Cartridge *cart);
  * Detect mapper type from ROM data
  */
 MapperType cartridge_detect_mapper(const u8 *rom_data, u32 rom_size);
+
+/*
+ * Write byte to ROM data (for editing)
+ */
+void cartridge_write_rom(Cartridge *cart, u32 address, u8 value);
+
+/*
+ * Update ROM checksum after modifications
+ */
+void cartridge_update_checksum(Cartridge *cart);
+
+/*
+ * Save modified ROM to file
+ */
+int cartridge_save_rom(const Cartridge *cart, const char *filename);
+
+/*
+ * Create backup of ROM data
+ */
+int cartridge_backup_rom(Cartridge *cart);
+
+/*
+ * Restore ROM from backup
+ */
+int cartridge_restore_rom(Cartridge *cart);
 
 #endif /* CARTRIDGE_H */
