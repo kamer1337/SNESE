@@ -126,10 +126,27 @@ u32 memory_read24(Memory *mem, u32 address) {
 }
 
 void memory_dma_transfer(Memory *mem, u8 channel) {
-    /* DMA implementation placeholder for Phase 4 */
-    if (channel < 8) {
-        mem->dma_enabled[channel] = true;
+    /* DMA implementation for Phase 4 */
+    /* DMA transfers data between memory regions */
+    /* Channels 0-7 available */
+    
+    if (channel >= 8) {
+        return;
     }
+    
+    /* Enable the DMA channel */
+    mem->dma_enabled[channel] = true;
+    
+    /* TODO: Full DMA implementation would:
+     * 1. Read DMA control registers for the channel
+     * 2. Determine source and destination addresses
+     * 3. Determine transfer size and direction
+     * 4. Perform the actual memory copy
+     * 5. Update DMA channel registers
+     * 6. Take appropriate number of CPU cycles
+     */
+    
+    /* For now, this is a placeholder that marks the channel as active */
 }
 
 u32 memory_map_address(const Memory *mem, u8 bank, u16 offset) {
