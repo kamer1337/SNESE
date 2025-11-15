@@ -157,4 +157,26 @@ void apu_output_wav(const APU *apu, const char *filename);
  */
 const s16 *apu_get_audio_buffer(const APU *apu, u32 *size);
 
+/*
+ * Execute a single SPC-700 instruction
+ */
+u32 spc700_execute_instruction(APU *apu);
+
+/*
+ * Decode BRR (Bit Rate Reduction) audio sample block
+ */
+void brr_decode_block(const u8 *brr_block, s16 *samples, s16 *old, s16 *older);
+
+/*
+ * SPC-700 PSW flag accessors
+ */
+#define SPC_FLAG_C 0x01  /* Carry */
+#define SPC_FLAG_Z 0x02  /* Zero */
+#define SPC_FLAG_I 0x04  /* Interrupt enable */
+#define SPC_FLAG_H 0x08  /* Half carry */
+#define SPC_FLAG_B 0x10  /* Break */
+#define SPC_FLAG_P 0x20  /* Direct page */
+#define SPC_FLAG_V 0x40  /* Overflow */
+#define SPC_FLAG_N 0x80  /* Negative */
+
 #endif /* APU_H */

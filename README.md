@@ -37,20 +37,22 @@ This project follows a phased development approach. See [roadmap.md](roadmap.md)
 
 ## Current Status
 
-🚧 **In Active Development** - Currently working on Phases 3, 4, and 5
+🚧 **In Active Development** - Phases 3 and 4 Complete!
 
 - ✅ Phase 1: Foundation and project structure - **Complete (100%)**
 - ✅ Phase 2: CPU emulation core - **Complete (100%)**
   - 126 opcodes implemented including all addressing modes
   - Breakpoint debugging support
   - Full 65c816 instruction set
-- 🔄 Phase 3: Graphics and input - **In Progress (70%)**
-  - Tile rendering and sprite support implemented
-  - Mode 7 graphics pending
-- 🔄 Phase 4: System integration - **In Progress (50%)**
-  - DMA transfer system implemented
-  - APU structure in place, SPC-700 incomplete
-- 🔄 Phase 5: Game Maker - **Started (10%)**
+- ✅ Phase 3: Graphics and input - **Complete (100%)**
+  - Tile rendering and sprite support
+  - Mode 7 affine transformation graphics
+  - Input system with controller emulation
+- ✅ Phase 4: Audio and system integration - **Complete (100%)**
+  - SPC-700 instruction set (50+ opcodes)
+  - BRR audio sample decoding
+  - DMA and HDMA transfer systems
+- 🔄 Phase 5: Game Maker - **In Progress (10%)**
   - Basic interface and menu system
   - Editor placeholders created
 - ⏳ Phase 6: Optimization and testing - **Upcoming**

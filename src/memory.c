@@ -256,3 +256,105 @@ void memory_dma_trigger(Memory *mem, u8 channels_mask) {
         }
     }
 }
+
+void memory_hdma_init(Memory *mem, u8 channel) {
+    DMAChannel *dma;
+    
+    if (channel >= 8) {
+        return;
+    }
+    
+    dma = &mem->dma[channel];
+    
+    if (!dma->hdma_enabled) {
+        return;
+    }
+    
+    /* Initialize HDMA table address and indirect address */
+    /* This prepares the channel for scanline-by-scanline transfers */
+    dma->transfer_size = 0;  /* Will be set per scanline */
+}
+
+void memory_hdma_run(Memory *mem) {
+    int i;
+    DMAChannel *dma;
+    u8 line_count;
+    u32 table_addr;
+    u8 dest_reg;
+    u8 data;
+    
+    /* Process each HDMA channel */
+    for (i = 0; i < 8; i++) {
+        dma = &mem->dma[i];
+        
+        if (!dma->hdma_enabled) {
+            continue;
+        }
+        
+        /* Get table address */
+        table_addr = ((u32)dma->hdma_table_bank << 16) | dma->hdma_table_addr;
+        
+        /* Read line count from table */
+        line_count = memory_read(mem, table_addr);
+        
+        if (line_count == 0) {
+            /* End of table or repeat mode */
+            continue;
+        }
+        
+        dest_reg = dma->dest_register;
+        
+        /* HDMA transfer modes */
+        switch (dma->control & 0x07) {
+            case 0:  /* 1 register write */
+                table_addr++;
+                data = memory_read(mem, table_addr);
+                memory_write(mem, 0x2100 + dest_reg, data);
+                dma->hdma_table_addr++;
+                break;
+                
+            case 1:  /* 2 registers write */
+                table_addr++;
+                data = memory_read(mem, table_addr);
+                memory_write(mem, 0x2100 + dest_reg, data);
+                table_addr++;
+                data = memory_read(mem, table_addr);
+                memory_write(mem, 0x2101 + dest_reg, data);
+                dma->hdma_table_addr += 2;
+                break;
+                
+            case 2:  /* 1 register write twice */
+                table_addr++;
+                data = memory_read(mem, table_addr);
+                memory_write(mem, 0x2100 + dest_reg, data);
+                table_addr++;
+                data = memory_read(mem, table_addr);
+                memory_write(mem, 0x2100 + dest_reg, data);
+                dma->hdma_table_addr += 2;
+                break;
+                
+            case 3:  /* 2 registers write twice */
+            case 4:  /* 4 registers write */
+                /* More complex modes - simplified implementation */
+                table_addr++;
+                data = memory_read(mem, table_addr);
+                memory_write(mem, 0x2100 + dest_reg, data);
+                dma->hdma_table_addr++;
+                break;
+                
+            default:
+                /* Other modes */
+                dma->hdma_table_addr++;
+                break;
+        }
+        
+        /* Decrement line counter if not infinite repeat */
+        if (line_count < 0x80) {
+            line_count--;
+            if (line_count == 0) {
+                /* Move to next entry in table */
+                dma->hdma_table_addr++;
+            }
+        }
+    }
+}

@@ -57,6 +57,18 @@ void ppu_reset(PPU *ppu) {
     ppu->vram_addr = 0;
     ppu->vram_increment = 1;
     
+    /* Reset Mode 7 state */
+    ppu->m7_matrix_a = 0x0100;  /* Identity matrix (1.0 in fixed point) */
+    ppu->m7_matrix_b = 0;
+    ppu->m7_matrix_c = 0;
+    ppu->m7_matrix_d = 0x0100;  /* Identity matrix (1.0 in fixed point) */
+    ppu->m7_center_x = 0;
+    ppu->m7_center_y = 0;
+    ppu->m7_repeat = 0;
+    ppu->m7_h_flip = false;
+    ppu->m7_v_flip = false;
+    ppu->m7_latch = 0;
+    
     ppu->needs_render = false;
     
     /* Clear framebuffer */
@@ -161,6 +173,67 @@ void ppu_write_register(PPU *ppu, u16 address, u8 value) {
             }
             break;
             
+        /* Mode 7 registers */
+        case 0x211A:  /* M7SEL - Mode 7 Settings */
+            ppu->m7_repeat = value & 0x03;
+            ppu->m7_h_flip = (value & 0x01) != 0;
+            ppu->m7_v_flip = (value & 0x02) != 0;
+            break;
+            
+        case 0x211B:  /* M7A - Mode 7 Matrix A (low) / (high) */
+            if (!ppu->m7_latch) {
+                ppu->m7_latch = value;
+            } else {
+                ppu->m7_matrix_a = (s16)((value << 8) | ppu->m7_latch);
+                ppu->m7_latch = 0;
+            }
+            break;
+            
+        case 0x211C:  /* M7B - Mode 7 Matrix B (low) / (high) */
+            if (!ppu->m7_latch) {
+                ppu->m7_latch = value;
+            } else {
+                ppu->m7_matrix_b = (s16)((value << 8) | ppu->m7_latch);
+                ppu->m7_latch = 0;
+            }
+            break;
+            
+        case 0x211D:  /* M7C - Mode 7 Matrix C (low) / (high) */
+            if (!ppu->m7_latch) {
+                ppu->m7_latch = value;
+            } else {
+                ppu->m7_matrix_c = (s16)((value << 8) | ppu->m7_latch);
+                ppu->m7_latch = 0;
+            }
+            break;
+            
+        case 0x211E:  /* M7D - Mode 7 Matrix D (low) / (high) */
+            if (!ppu->m7_latch) {
+                ppu->m7_latch = value;
+            } else {
+                ppu->m7_matrix_d = (s16)((value << 8) | ppu->m7_latch);
+                ppu->m7_latch = 0;
+            }
+            break;
+            
+        case 0x211F:  /* M7X - Mode 7 Center X (low) / (high) */
+            if (!ppu->m7_latch) {
+                ppu->m7_latch = value;
+            } else {
+                ppu->m7_center_x = (s16)((value << 8) | ppu->m7_latch);
+                ppu->m7_latch = 0;
+            }
+            break;
+            
+        case 0x2120:  /* M7Y - Mode 7 Center Y (low) / (high) */
+            if (!ppu->m7_latch) {
+                ppu->m7_latch = value;
+            } else {
+                ppu->m7_center_y = (s16)((value << 8) | ppu->m7_latch);
+                ppu->m7_latch = 0;
+            }
+            break;
+            
         default:
             /* Unhandled register */
             break;
@@ -209,11 +282,16 @@ void ppu_render_scanline(PPU *ppu) {
         line[x] = ppu_get_color(ppu, 0);
     }
     
-    /* Render enabled background layers (back to front) */
-    /* In mode 0: all 4 layers, mode 1: 2-3 layers, mode 7: 1 layer */
-    for (i = 3; i >= 0; i--) {
-        if (ppu->bg[i].enabled) {
-            ppu_render_background(ppu, i);
+    /* Check for Mode 7 rendering */
+    if (ppu->bg_mode == 7) {
+        ppu_render_mode7(ppu);
+    } else {
+        /* Render enabled background layers (back to front) */
+        /* In mode 0: all 4 layers, mode 1: 2-3 layers */
+        for (i = 3; i >= 0; i--) {
+            if (ppu->bg[i].enabled) {
+                ppu_render_background(ppu, i);
+            }
         }
     }
     
@@ -471,4 +549,94 @@ void ppu_output_ppm(const PPU *ppu, const char *filename) {
     
     fclose(f);
     printf("Frame output to %s\n", filename);
+}
+
+void ppu_render_mode7(PPU *ppu) {
+    int x, y;
+    s32 screen_x, screen_y;
+    s32 world_x, world_y;
+    s32 a, b, c, d;
+    s32 center_x, center_y;
+    u8 tile_data, color_index;
+    u16 tile_addr;
+    int tile_x, tile_y, pixel_x, pixel_y;
+    
+    if (!ppu->vram || ppu->bg_mode != 7) {
+        return;
+    }
+    
+    /* Get current scanline */
+    y = ppu->vcount;
+    if (y >= SCREEN_HEIGHT) {
+        return;
+    }
+    
+    /* Get transformation matrix parameters (8.8 fixed point) */
+    a = ppu->m7_matrix_a;
+    b = ppu->m7_matrix_b;
+    c = ppu->m7_matrix_c;
+    d = ppu->m7_matrix_d;
+    center_x = ppu->m7_center_x;
+    center_y = ppu->m7_center_y;
+    
+    /* Render each pixel on this scanline */
+    for (x = 0; x < SCREEN_WIDTH; x++) {
+        /* Convert screen coordinates to centered coordinates */
+        screen_x = x - 128;
+        screen_y = y - 112;
+        
+        /* Apply affine transformation: 
+         * world_x = a * screen_x + b * screen_y + center_x
+         * world_y = c * screen_x + d * screen_y + center_y
+         */
+        world_x = ((a * screen_x) >> 8) + ((b * screen_y) >> 8) + center_x;
+        world_y = ((c * screen_x) >> 8) + ((d * screen_y) >> 8) + center_y;
+        
+        /* Handle repeat modes */
+        switch (ppu->m7_repeat & 0x03) {
+            case 0:  /* Repeat */
+                world_x &= 0x3FF;  /* Wrap to 1024x1024 */
+                world_y &= 0x3FF;
+                break;
+            case 1:  /* No repeat - transparent outside */
+                if (world_x < 0 || world_x >= 1024 || world_y < 0 || world_y >= 1024) {
+                    continue;  /* Skip this pixel */
+                }
+                break;
+            case 2:  /* Repeat with tile 0 outside */
+            case 3:
+                if (world_x < 0 || world_x >= 1024 || world_y < 0 || world_y >= 1024) {
+                    world_x = 0;
+                    world_y = 0;
+                }
+                break;
+        }
+        
+        /* Convert world coordinates to tile coordinates */
+        tile_x = world_x >> 3;  /* Divide by 8 */
+        tile_y = world_y >> 3;
+        pixel_x = world_x & 7;  /* Modulo 8 */
+        pixel_y = world_y & 7;
+        
+        /* Mode 7 uses a 128x128 tile map at the start of VRAM */
+        /* Each tilemap entry is 1 byte (tile number) */
+        tile_addr = (tile_y * 128 + tile_x) & 0x3FFF;
+        
+        u8 tile_num = ppu->vram[tile_addr];
+        
+        /* Mode 7 tiles are 8x8 pixels, 8bpp (1 byte per pixel) */
+        /* Tile data starts at $0000 in VRAM, 64 bytes per tile */
+        tile_addr = (tile_num * 64) + (pixel_y * 8) + pixel_x;
+        
+        tile_data = ppu->vram[tile_addr];
+        color_index = tile_data;
+        
+        /* Skip transparent pixels (color 0) */
+        if (color_index == 0) {
+            continue;
+        }
+        
+        /* Draw pixel to framebuffer */
+        ppu->framebuffer[y * SCREEN_WIDTH + x] = ppu_get_color(ppu, color_index);
+    }
 }

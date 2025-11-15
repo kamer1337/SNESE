@@ -79,13 +79,10 @@ void apu_run(APU *apu, u32 cycles) {
         return;
     }
     
-    /* Simple cycle execution - actual SPC-700 emulation would go here */
+    /* Execute SPC-700 instructions until we've used up the cycle budget */
     while (cycles_run < cycles && !apu->cpu.stopped) {
-        /* Placeholder for SPC-700 instruction execution */
-        /* This would fetch, decode, and execute SPC-700 opcodes */
-        
-        cycles_run++;
-        apu->cpu.cycles++;
+        u32 instruction_cycles = spc700_execute_instruction(apu);
+        cycles_run += instruction_cycles;
     }
     
     /* Generate audio samples proportional to cycles executed */
@@ -289,4 +286,501 @@ void apu_output_wav(const APU *apu, const char *filename) {
 const s16 *apu_get_audio_buffer(const APU *apu, u32 *size) {
     *size = apu->buffer_pos;
     return apu->audio_buffer;
+}
+
+/* BRR (Bit Rate Reduction) audio decoding */
+void brr_decode_block(const u8 *brr_block, s16 *samples, s16 *old, s16 *older) {
+    u8 header;
+    u8 filter, shift;
+    int i;
+    s16 s1, s2;
+    
+    /* BRR block format:
+     * Byte 0: Header (EESSFFFF)
+     *   E = End flag
+     *   S = Shift amount (0-12)
+     *   F = Filter type (0-3)
+     * Bytes 1-8: Sample data (2 4-bit samples per byte, 16 samples total)
+     */
+    
+    header = brr_block[0];
+    shift = (header >> 4) & 0x0F;
+    filter = (header >> 2) & 0x03;
+    
+    /* Previous samples for filtering */
+    s1 = *old;
+    s2 = *older;
+    
+    /* Clamp shift to prevent overflow */
+    if (shift > 12) {
+        shift = 12;
+    }
+    
+    /* Decode 16 samples (8 bytes, 2 samples per byte) */
+    for (i = 0; i < 8; i++) {
+        u8 byte = brr_block[1 + i];
+        s16 sample1, sample2;
+        s32 s;
+        
+        /* First sample (high nibble) */
+        sample1 = (s8)(byte & 0xF0) >> 4;  /* Sign-extend 4-bit to 8-bit */
+        if (sample1 > 7) sample1 -= 16;     /* Convert to signed */
+        
+        /* Apply shift */
+        s = (s32)(sample1 << shift) >> 1;
+        
+        /* Apply filter */
+        switch (filter) {
+            case 0:  /* No filter */
+                break;
+            case 1:  /* Filter: out = in + old * 15/16 */
+                s += s1 + ((-s1) >> 4);
+                break;
+            case 2:  /* Filter: out = in + old * 61/32 - older * 15/16 */
+                s += (s1 * 2) + ((-s1 * 3) >> 5) - s2 + ((s2) >> 4);
+                break;
+            case 3:  /* Filter: out = in + old * 115/64 - older * 13/16 */
+                s += (s1 * 2) + ((-s1 * 13) >> 6) - s2 + ((s2 * 3) >> 4);
+                break;
+        }
+        
+        /* Clamp to 16-bit range */
+        if (s > 32767) s = 32767;
+        if (s < -32768) s = -32768;
+        
+        samples[i * 2] = (s16)s;
+        s2 = s1;
+        s1 = (s16)s;
+        
+        /* Second sample (low nibble) */
+        sample2 = (s8)((byte & 0x0F) << 4) >> 4;  /* Sign-extend 4-bit to 8-bit */
+        if (sample2 > 7) sample2 -= 16;
+        
+        /* Apply shift */
+        s = (s32)(sample2 << shift) >> 1;
+        
+        /* Apply filter */
+        switch (filter) {
+            case 0:
+                break;
+            case 1:
+                s += s1 + ((-s1) >> 4);
+                break;
+            case 2:
+                s += (s1 * 2) + ((-s1 * 3) >> 5) - s2 + ((s2) >> 4);
+                break;
+            case 3:
+                s += (s1 * 2) + ((-s1 * 13) >> 6) - s2 + ((s2 * 3) >> 4);
+                break;
+        }
+        
+        /* Clamp to 16-bit range */
+        if (s > 32767) s = 32767;
+        if (s < -32768) s = -32768;
+        
+        samples[i * 2 + 1] = (s16)s;
+        s2 = s1;
+        s1 = (s16)s;
+    }
+    
+    /* Save state for next block */
+    *old = s1;
+    *older = s2;
+}
+
+/* SPC-700 helper functions */
+static u8 spc700_read_byte(APU *apu, u16 addr) {
+    return apu->ram[addr];
+}
+
+static void spc700_write_byte(APU *apu, u16 addr, u8 value) {
+    apu->ram[addr] = value;
+}
+
+static void spc700_set_flag(APU *apu, u8 flag, bool value) {
+    if (value) {
+        apu->cpu.psw |= flag;
+    } else {
+        apu->cpu.psw &= ~flag;
+    }
+}
+
+static bool spc700_get_flag(const APU *apu, u8 flag) {
+    return (apu->cpu.psw & flag) != 0;
+}
+
+static void spc700_set_nz(APU *apu, u8 value) {
+    spc700_set_flag(apu, SPC_FLAG_N, (value & 0x80) != 0);
+    spc700_set_flag(apu, SPC_FLAG_Z, value == 0);
+}
+
+static void spc700_push(APU *apu, u8 value) {
+    apu->ram[0x0100 + apu->cpu.sp] = value;
+    apu->cpu.sp--;
+}
+
+static u8 spc700_pull(APU *apu) {
+    apu->cpu.sp++;
+    return apu->ram[0x0100 + apu->cpu.sp];
+}
+
+/* Execute a single SPC-700 instruction */
+u32 spc700_execute_instruction(APU *apu) {
+    u8 opcode;
+    u8 operand1, operand2;
+    u16 addr;
+    u32 cycles = 2;  /* Most instructions take 2 cycles minimum */
+    
+    /* Fetch opcode */
+    opcode = spc700_read_byte(apu, apu->cpu.pc++);
+    
+    /* Decode and execute */
+    switch (opcode) {
+        /* NOP - No Operation */
+        case 0x00:
+            cycles = 2;
+            break;
+            
+        /* MOV A, #imm */
+        case 0xE8:
+            apu->cpu.a = spc700_read_byte(apu, apu->cpu.pc++);
+            spc700_set_nz(apu, apu->cpu.a);
+            cycles = 2;
+            break;
+            
+        /* MOV X, #imm */
+        case 0xCD:
+            apu->cpu.x = spc700_read_byte(apu, apu->cpu.pc++);
+            spc700_set_nz(apu, apu->cpu.x);
+            cycles = 2;
+            break;
+            
+        /* MOV Y, #imm */
+        case 0x8D:
+            apu->cpu.y = spc700_read_byte(apu, apu->cpu.pc++);
+            spc700_set_nz(apu, apu->cpu.y);
+            cycles = 2;
+            break;
+            
+        /* MOV A, X */
+        case 0x7D:
+            apu->cpu.a = apu->cpu.x;
+            spc700_set_nz(apu, apu->cpu.a);
+            cycles = 2;
+            break;
+            
+        /* MOV A, Y */
+        case 0xDD:
+            apu->cpu.a = apu->cpu.y;
+            spc700_set_nz(apu, apu->cpu.a);
+            cycles = 2;
+            break;
+            
+        /* MOV X, A */
+        case 0x5D:
+            apu->cpu.x = apu->cpu.a;
+            spc700_set_nz(apu, apu->cpu.x);
+            cycles = 2;
+            break;
+            
+        /* MOV Y, A */
+        case 0xFD:
+            apu->cpu.y = apu->cpu.a;
+            spc700_set_nz(apu, apu->cpu.y);
+            cycles = 2;
+            break;
+            
+        /* MOV A, (dp) */
+        case 0xE4:
+            operand1 = spc700_read_byte(apu, apu->cpu.pc++);
+            apu->cpu.a = spc700_read_byte(apu, operand1);
+            spc700_set_nz(apu, apu->cpu.a);
+            cycles = 3;
+            break;
+            
+        /* MOV (dp), A */
+        case 0xC4:
+            operand1 = spc700_read_byte(apu, apu->cpu.pc++);
+            spc700_write_byte(apu, operand1, apu->cpu.a);
+            cycles = 4;
+            break;
+            
+        /* MOV A, (X) */
+        case 0xE6:
+            apu->cpu.a = spc700_read_byte(apu, apu->cpu.x);
+            spc700_set_nz(apu, apu->cpu.a);
+            cycles = 3;
+            break;
+            
+        /* MOV (X), A */
+        case 0xC6:
+            spc700_write_byte(apu, apu->cpu.x, apu->cpu.a);
+            cycles = 4;
+            break;
+            
+        /* MOV A, addr */
+        case 0xE5:
+            operand1 = spc700_read_byte(apu, apu->cpu.pc++);
+            operand2 = spc700_read_byte(apu, apu->cpu.pc++);
+            addr = operand1 | (operand2 << 8);
+            apu->cpu.a = spc700_read_byte(apu, addr);
+            spc700_set_nz(apu, apu->cpu.a);
+            cycles = 4;
+            break;
+            
+        /* MOV addr, A */
+        case 0xC5:
+            operand1 = spc700_read_byte(apu, apu->cpu.pc++);
+            operand2 = spc700_read_byte(apu, apu->cpu.pc++);
+            addr = operand1 | (operand2 << 8);
+            spc700_write_byte(apu, addr, apu->cpu.a);
+            cycles = 5;
+            break;
+            
+        /* INC A */
+        case 0xBC:
+            apu->cpu.a++;
+            spc700_set_nz(apu, apu->cpu.a);
+            cycles = 2;
+            break;
+            
+        /* INC X */
+        case 0x3D:
+            apu->cpu.x++;
+            spc700_set_nz(apu, apu->cpu.x);
+            cycles = 2;
+            break;
+            
+        /* INC Y */
+        case 0xFC:
+            apu->cpu.y++;
+            spc700_set_nz(apu, apu->cpu.y);
+            cycles = 2;
+            break;
+            
+        /* DEC A */
+        case 0x9C:
+            apu->cpu.a--;
+            spc700_set_nz(apu, apu->cpu.a);
+            cycles = 2;
+            break;
+            
+        /* DEC X */
+        case 0x1D:
+            apu->cpu.x--;
+            spc700_set_nz(apu, apu->cpu.x);
+            cycles = 2;
+            break;
+            
+        /* DEC Y */
+        case 0xDC:
+            apu->cpu.y--;
+            spc700_set_nz(apu, apu->cpu.y);
+            cycles = 2;
+            break;
+            
+        /* ADC A, #imm */
+        case 0x88: {
+            u8 imm = spc700_read_byte(apu, apu->cpu.pc++);
+            u16 result = apu->cpu.a + imm + (spc700_get_flag(apu, SPC_FLAG_C) ? 1 : 0);
+            spc700_set_flag(apu, SPC_FLAG_C, result > 0xFF);
+            spc700_set_flag(apu, SPC_FLAG_V, ((apu->cpu.a ^ result) & (imm ^ result) & 0x80) != 0);
+            spc700_set_flag(apu, SPC_FLAG_H, ((apu->cpu.a & 0x0F) + (imm & 0x0F) + 
+                (spc700_get_flag(apu, SPC_FLAG_C) ? 1 : 0)) > 0x0F);
+            apu->cpu.a = (u8)result;
+            spc700_set_nz(apu, apu->cpu.a);
+            cycles = 2;
+            break;
+        }
+            
+        /* SBC A, #imm */
+        case 0xA8: {
+            u8 imm = spc700_read_byte(apu, apu->cpu.pc++);
+            u16 result = apu->cpu.a - imm - (spc700_get_flag(apu, SPC_FLAG_C) ? 0 : 1);
+            spc700_set_flag(apu, SPC_FLAG_C, result <= 0xFF);
+            spc700_set_flag(apu, SPC_FLAG_V, ((apu->cpu.a ^ imm) & (apu->cpu.a ^ result) & 0x80) != 0);
+            apu->cpu.a = (u8)result;
+            spc700_set_nz(apu, apu->cpu.a);
+            cycles = 2;
+            break;
+        }
+            
+        /* CMP A, #imm */
+        case 0x68: {
+            u8 imm = spc700_read_byte(apu, apu->cpu.pc++);
+            u16 result = apu->cpu.a - imm;
+            spc700_set_flag(apu, SPC_FLAG_C, result <= 0xFF);
+            spc700_set_nz(apu, (u8)result);
+            cycles = 2;
+            break;
+        }
+            
+        /* CMP X, #imm */
+        case 0xC8: {
+            u8 imm = spc700_read_byte(apu, apu->cpu.pc++);
+            u16 result = apu->cpu.x - imm;
+            spc700_set_flag(apu, SPC_FLAG_C, result <= 0xFF);
+            spc700_set_nz(apu, (u8)result);
+            cycles = 2;
+            break;
+        }
+            
+        /* CMP Y, #imm */
+        case 0xAD: {
+            u8 imm = spc700_read_byte(apu, apu->cpu.pc++);
+            u16 result = apu->cpu.y - imm;
+            spc700_set_flag(apu, SPC_FLAG_C, result <= 0xFF);
+            spc700_set_nz(apu, (u8)result);
+            cycles = 2;
+            break;
+        }
+            
+        /* AND A, #imm */
+        case 0x28:
+            apu->cpu.a &= spc700_read_byte(apu, apu->cpu.pc++);
+            spc700_set_nz(apu, apu->cpu.a);
+            cycles = 2;
+            break;
+            
+        /* OR A, #imm */
+        case 0x08:
+            apu->cpu.a |= spc700_read_byte(apu, apu->cpu.pc++);
+            spc700_set_nz(apu, apu->cpu.a);
+            cycles = 2;
+            break;
+            
+        /* EOR A, #imm */
+        case 0x48:
+            apu->cpu.a ^= spc700_read_byte(apu, apu->cpu.pc++);
+            spc700_set_nz(apu, apu->cpu.a);
+            cycles = 2;
+            break;
+            
+        /* BRA rel */
+        case 0x2F:
+            operand1 = spc700_read_byte(apu, apu->cpu.pc++);
+            apu->cpu.pc += (s8)operand1;
+            cycles = 4;
+            break;
+            
+        /* BEQ rel */
+        case 0xF0:
+            operand1 = spc700_read_byte(apu, apu->cpu.pc++);
+            if (spc700_get_flag(apu, SPC_FLAG_Z)) {
+                apu->cpu.pc += (s8)operand1;
+                cycles = 4;
+            } else {
+                cycles = 2;
+            }
+            break;
+            
+        /* BNE rel */
+        case 0xD0:
+            operand1 = spc700_read_byte(apu, apu->cpu.pc++);
+            if (!spc700_get_flag(apu, SPC_FLAG_Z)) {
+                apu->cpu.pc += (s8)operand1;
+                cycles = 4;
+            } else {
+                cycles = 2;
+            }
+            break;
+            
+        /* BCS rel */
+        case 0xB0:
+            operand1 = spc700_read_byte(apu, apu->cpu.pc++);
+            if (spc700_get_flag(apu, SPC_FLAG_C)) {
+                apu->cpu.pc += (s8)operand1;
+                cycles = 4;
+            } else {
+                cycles = 2;
+            }
+            break;
+            
+        /* BCC rel */
+        case 0x90:
+            operand1 = spc700_read_byte(apu, apu->cpu.pc++);
+            if (!spc700_get_flag(apu, SPC_FLAG_C)) {
+                apu->cpu.pc += (s8)operand1;
+                cycles = 4;
+            } else {
+                cycles = 2;
+            }
+            break;
+            
+        /* PUSH A */
+        case 0x2D:
+            spc700_push(apu, apu->cpu.a);
+            cycles = 4;
+            break;
+            
+        /* PUSH X */
+        case 0x4D:
+            spc700_push(apu, apu->cpu.x);
+            cycles = 4;
+            break;
+            
+        /* PUSH Y */
+        case 0x6D:
+            spc700_push(apu, apu->cpu.y);
+            cycles = 4;
+            break;
+            
+        /* PUSH PSW */
+        case 0x0D:
+            spc700_push(apu, apu->cpu.psw);
+            cycles = 4;
+            break;
+            
+        /* POP A */
+        case 0xAE:
+            apu->cpu.a = spc700_pull(apu);
+            cycles = 4;
+            break;
+            
+        /* POP X */
+        case 0xCE:
+            apu->cpu.x = spc700_pull(apu);
+            cycles = 4;
+            break;
+            
+        /* POP Y */
+        case 0xEE:
+            apu->cpu.y = spc700_pull(apu);
+            cycles = 4;
+            break;
+            
+        /* POP PSW */
+        case 0x8E:
+            apu->cpu.psw = spc700_pull(apu);
+            cycles = 4;
+            break;
+            
+        /* RET */
+        case 0x6F:
+            operand1 = spc700_pull(apu);
+            operand2 = spc700_pull(apu);
+            apu->cpu.pc = operand1 | (operand2 << 8);
+            cycles = 5;
+            break;
+            
+        /* SLEEP - Stop CPU */
+        case 0xEF:
+            apu->cpu.stopped = true;
+            cycles = 3;
+            break;
+            
+        /* STOP - Stop CPU and oscillator */
+        case 0xFF:
+            apu->cpu.stopped = true;
+            cycles = 3;
+            break;
+            
+        default:
+            /* Unknown opcode - treat as NOP */
+            cycles = 2;
+            break;
+    }
+    
+    apu->cpu.cycles += cycles;
+    return cycles;
 }

@@ -105,6 +105,16 @@ void memory_dma_setup(Memory *mem, u8 channel, u8 control, u8 dest_reg,
 void memory_dma_trigger(Memory *mem, u8 channels_mask);
 
 /*
+ * Initialize HDMA channel
+ */
+void memory_hdma_init(Memory *mem, u8 channel);
+
+/*
+ * Process HDMA for current scanline
+ */
+void memory_hdma_run(Memory *mem);
+
+/*
  * Map bank address to physical address
  * Handles LoROM/HiROM mapping
  */

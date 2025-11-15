@@ -91,6 +91,18 @@ typedef struct {
     u16 vram_addr;        /* VRAM address pointer */
     u8 vram_increment;    /* VRAM address increment */
     
+    /* Mode 7 state */
+    s16 m7_matrix_a;      /* Mode 7 matrix parameter A */
+    s16 m7_matrix_b;      /* Mode 7 matrix parameter B */
+    s16 m7_matrix_c;      /* Mode 7 matrix parameter C */
+    s16 m7_matrix_d;      /* Mode 7 matrix parameter D */
+    s16 m7_center_x;      /* Mode 7 center X */
+    s16 m7_center_y;      /* Mode 7 center Y */
+    u8 m7_repeat;         /* Mode 7 repeat mode */
+    bool m7_h_flip;       /* Mode 7 horizontal flip */
+    bool m7_v_flip;       /* Mode 7 vertical flip */
+    u8 m7_latch;          /* Mode 7 write latch */
+    
     /* Frame buffer */
     u32 *framebuffer;     /* RGBA pixel data (256x224) */
     u8 *layer_buffer[5];  /* Separate buffers for each layer + sprites */
@@ -166,5 +178,10 @@ void ppu_render_background(PPU *ppu, u8 layer);
  * Render sprites/objects
  */
 void ppu_render_sprites(PPU *ppu);
+
+/*
+ * Render Mode 7 background
+ */
+void ppu_render_mode7(PPU *ppu);
 
 #endif /* PPU_H */
