@@ -14,6 +14,7 @@
 #include "../include/ppu.h"
 #include "../include/input.h"
 #include "../include/apu.h"
+#include "../include/game_maker.h"
 
 /* Global system components */
 Memory g_memory;
@@ -30,7 +31,7 @@ static void print_usage(const char *program_name) {
     printf("  -h, --help       Show this help message\n");
     printf("  -i, --info       Display ROM information only\n");
     printf("  -d, --debug      Enable debug mode\n");
-    printf("  --maker          Launch game maker mode (future)\n");
+    printf("  --maker          Launch game maker mode\n");
     printf("\n");
 }
 
@@ -48,6 +49,7 @@ int main(int argc, char *argv[]) {
     char *rom_filename = NULL;
     bool info_only = false;
     bool debug_mode = false;
+    bool maker_mode = false;
     
     print_banner();
     
@@ -60,6 +62,8 @@ int main(int argc, char *argv[]) {
             info_only = true;
         } else if (strcmp(argv[i], "-d") == 0 || strcmp(argv[i], "--debug") == 0) {
             debug_mode = true;
+        } else if (strcmp(argv[i], "--maker") == 0) {
+            maker_mode = true;
         } else if (argv[i][0] != '-') {
             rom_filename = argv[i];
         }
@@ -85,6 +89,23 @@ int main(int argc, char *argv[]) {
     /* If info-only mode, exit here */
     if (info_only) {
         printf("Info-only mode: exiting\n");
+        cartridge_unload(&g_cartridge);
+        return 0;
+    }
+    
+    /* If maker mode, enter Game Maker */
+    if (maker_mode) {
+        GameMaker game_maker;
+        
+        /* Initialize memory for Game Maker */
+        memory_init(&g_memory);
+        memory_set_cartridge(&g_memory, &g_cartridge);
+        
+        /* Enter Game Maker */
+        gamemaker_init(&game_maker, &g_cartridge, &g_memory);
+        gamemaker_run(&game_maker);
+        gamemaker_cleanup(&game_maker);
+        
         cartridge_unload(&g_cartridge);
         return 0;
     }

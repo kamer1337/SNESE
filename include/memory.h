@@ -17,6 +17,19 @@
 #define SRAM_START     0x700000
 #define SRAM_END       0x7DFFFF
 
+/* DMA channel structure */
+typedef struct {
+    u8 control;          /* DMA control register */
+    u8 dest_register;    /* Destination (B-bus register) */
+    u16 src_addr;        /* Source address (low 16 bits) */
+    u8 src_bank;         /* Source bank */
+    u16 transfer_size;   /* Transfer size in bytes */
+    bool enabled;        /* Channel enabled flag */
+    bool hdma_enabled;   /* HDMA enabled flag */
+    u8 hdma_table_bank;  /* HDMA table bank */
+    u16 hdma_table_addr; /* HDMA table address */
+} DMAChannel;
+
 /* Memory structure */
 typedef struct {
     u8 wram[WRAM_SIZE];       /* 128KB Work RAM */
@@ -27,7 +40,7 @@ typedef struct {
     Cartridge *cart;          /* Pointer to loaded cartridge */
     
     /* DMA state */
-    bool dma_enabled[8];      /* 8 DMA channels */
+    DMAChannel dma[8];        /* 8 DMA channels */
     
     /* Memory mapped I/O registers */
     u8 io_registers[0x8000];  /* $2000-$7FFF I/O space */
@@ -79,6 +92,17 @@ u32 memory_read24(Memory *mem, u32 address);
  * DMA transfer
  */
 void memory_dma_transfer(Memory *mem, u8 channel);
+
+/*
+ * Configure DMA channel
+ */
+void memory_dma_setup(Memory *mem, u8 channel, u8 control, u8 dest_reg, 
+                      u32 src_addr, u16 size);
+
+/*
+ * Trigger all enabled DMA channels
+ */
+void memory_dma_trigger(Memory *mem, u8 channels_mask);
 
 /*
  * Map bank address to physical address

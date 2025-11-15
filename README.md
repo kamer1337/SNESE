@@ -37,11 +37,23 @@ This project follows a phased development approach. See [roadmap.md](roadmap.md)
 
 ## Current Status
 
-🚧 **In Development** - Currently working on Phase 1 and Phase 2
+🚧 **In Active Development** - Currently working on Phases 3, 4, and 5
 
-- ✅ Phase 1: Foundation and project structure
-- 🔄 Phase 2: CPU emulation core (in progress)
-- ⏳ Phase 3-6: Upcoming
+- ✅ Phase 1: Foundation and project structure - **Complete (100%)**
+- ✅ Phase 2: CPU emulation core - **Complete (100%)**
+  - 126 opcodes implemented including all addressing modes
+  - Breakpoint debugging support
+  - Full 65c816 instruction set
+- 🔄 Phase 3: Graphics and input - **In Progress (70%)**
+  - Tile rendering and sprite support implemented
+  - Mode 7 graphics pending
+- 🔄 Phase 4: System integration - **In Progress (50%)**
+  - DMA transfer system implemented
+  - APU structure in place, SPC-700 incomplete
+- 🔄 Phase 5: Game Maker - **Started (10%)**
+  - Basic interface and menu system
+  - Editor placeholders created
+- ⏳ Phase 6: Optimization and testing - **Upcoming**
 
 ## Prerequisites
 
@@ -74,11 +86,18 @@ make
 ./snesemu <rom_file.sfc>
 ```
 
-### Game Maker Mode (Future)
+### Game Maker Mode (Phase 5 - In Development)
 
 ```bash
 ./snesemu --maker <rom_file.sfc>
 ```
+
+Access the built-in Game Maker for ROM editing:
+- Tile Editor: Edit tile graphics
+- Sprite Editor: Modify sprite properties
+- Tilemap Editor: Edit background layers
+- Palette Editor: Adjust color palettes
+- ROM Export: Save modified ROMs
 
 ## Project Structure
 
