@@ -544,20 +544,132 @@ void gamemaker_sprite_update(GameMaker *gm) {
 /* Tilemap Editor implementation */
 
 void gamemaker_tilemap_editor(GameMaker *gm) {
+    char input[256];
+    bool editing = true;
+    
     printf("\n=== Tilemap Editor ===\n");
-    printf("(Placeholder - Full implementation in Phase 5)\n\n");
+    printf("Edit background layer tilemaps\n\n");
     
-    gamemaker_tilemap_editor_display(gm);
-    
-    printf("\nTilemap Editor features:\n");
-    printf("  - Edit background layers\n");
-    printf("  - Place and remove tiles\n");
-    printf("  - Layer selection\n");
-    printf("  - Paint mode\n");
-    printf("  - Tile picker\n");
-    printf("\nPress Enter to return to main menu...");
-    fflush(stdout);
-    getchar();
+    while (editing) {
+        gamemaker_tilemap_editor_display(gm);
+        
+        printf("\nCommands:\n");
+        printf("  l <layer>      - Select BG layer (0-3)\n");
+        printf("  t <tile>       - Select tile to place\n");
+        printf("  p <palette>    - Select palette (0-7)\n");
+        printf("  m <x> <y>      - Move cursor to position\n");
+        printf("  s              - Place selected tile at cursor\n");
+        printf("  c              - Toggle paint mode\n");
+        printf("  v              - View tilemap at cursor area\n");
+        printf("  b              - Return to main menu\n");
+        printf("\nCommand: ");
+        fflush(stdout);
+        
+        if (!fgets(input, sizeof(input), stdin)) {
+            break;
+        }
+        
+        char cmd = input[0];
+        switch (cmd) {
+            case 'l': {
+                u8 layer;
+                if (sscanf(input + 1, "%hhu", &layer) == 1 && layer < 4) {
+                    gm->tilemap_editor.current_layer = layer;
+                    printf("Selected BG%u\n", layer + 1);
+                } else {
+                    printf("Usage: l <layer_0-3>\n");
+                }
+                break;
+            }
+            case 't': {
+                u16 tile;
+                if (sscanf(input + 1, "%hu", &tile) == 1) {
+                    gm->tilemap_editor.selected_tile = tile;
+                    printf("Selected tile %u\n", tile);
+                } else {
+                    printf("Usage: t <tile_number>\n");
+                }
+                break;
+            }
+            case 'p': {
+                u8 pal;
+                if (sscanf(input + 1, "%hhu", &pal) == 1 && pal < 8) {
+                    gm->tilemap_editor.selected_palette = pal;
+                    printf("Palette set to %u\n", pal);
+                } else {
+                    printf("Usage: p <palette_0-7>\n");
+                }
+                break;
+            }
+            case 'm': {
+                u16 x, y;
+                if (sscanf(input + 1, "%hu %hu", &x, &y) == 2) {
+                    gm->tilemap_editor.cursor_x = x;
+                    gm->tilemap_editor.cursor_y = y;
+                    printf("Cursor moved to (%u, %u)\n", x, y);
+                } else {
+                    printf("Usage: m <x> <y>\n");
+                }
+                break;
+            }
+            case 's':
+                gamemaker_tilemap_place_tile(gm);
+                printf("Tile placed at (%u, %u)\n", 
+                       gm->tilemap_editor.cursor_x, gm->tilemap_editor.cursor_y);
+                break;
+            case 'c':
+                gm->tilemap_editor.paint_mode = !gm->tilemap_editor.paint_mode;
+                printf("Paint mode: %s\n", gm->tilemap_editor.paint_mode ? "On" : "Off");
+                break;
+            case 'v': {
+                /* Display tilemap area around cursor */
+                printf("\nTilemap at cursor area:\n");
+                if (gm->mem) {
+                    /* Display 5x5 grid around cursor */
+                    u16 base_x = (gm->tilemap_editor.cursor_x > 2) ? 
+                                 gm->tilemap_editor.cursor_x - 2 : 0;
+                    u16 base_y = (gm->tilemap_editor.cursor_y > 2) ? 
+                                 gm->tilemap_editor.cursor_y - 2 : 0;
+                    
+                    for (u16 y = 0; y < 5; y++) {
+                        printf("  ");
+                        for (u16 x = 0; x < 5; x++) {
+                            u16 tile_x = base_x + x;
+                            u16 tile_y = base_y + y;
+                            
+                            /* Calculate VRAM address (simplified) */
+                            u16 vram_addr = tile_y * 32 + tile_x;
+                            
+                            if (vram_addr * 2 + 1 < VRAM_SIZE) {
+                                u16 tile_data = gm->mem->vram[vram_addr * 2] |
+                                               (gm->mem->vram[vram_addr * 2 + 1] << 8);
+                                u16 tile_num = tile_data & 0x3FF;
+                                
+                                if (tile_x == gm->tilemap_editor.cursor_x &&
+                                    tile_y == gm->tilemap_editor.cursor_y) {
+                                    printf("[%03X]", tile_num);
+                                } else {
+                                    printf(" %03X ", tile_num);
+                                }
+                            } else {
+                                printf(" --- ");
+                            }
+                        }
+                        printf("\n");
+                    }
+                }
+                break;
+            }
+            case 'b':
+                editing = false;
+                break;
+            default:
+                printf("Unknown command\n");
+                break;
+        }
+        
+        printf("\n");
+    }
     
     gm->mode = GM_MODE_MAIN_MENU;
 }
@@ -571,6 +683,38 @@ void gamemaker_tilemap_editor_display(const GameMaker *gm) {
 }
 
 void gamemaker_tilemap_place_tile(GameMaker *gm) {
+    if (!gm->mem) {
+        gamemaker_set_status(gm, "Error: No VRAM available");
+        return;
+    }
+    
+    /* Calculate VRAM address for tilemap
+     * SNES tilemap format: 32x32 tiles per screen
+     * Each tile entry is 2 bytes with format:
+     * vhopppcc cccccccc
+     * v = vertical flip, h = horizontal flip
+     * o = priority, ppp = palette, cccccccccc = tile number
+     */
+    u16 tile_x = gm->tilemap_editor.cursor_x;
+    u16 tile_y = gm->tilemap_editor.cursor_y;
+    
+    /* Simple 32x32 tilemap addressing */
+    u16 vram_offset = tile_y * 32 + tile_x;
+    u16 vram_addr = vram_offset * 2;
+    
+    if (vram_addr + 1 >= VRAM_SIZE) {
+        gamemaker_set_status(gm, "Error: Cursor position out of range");
+        return;
+    }
+    
+    /* Build tile entry */
+    u16 tile_entry = gm->tilemap_editor.selected_tile & 0x3FF;
+    tile_entry |= (gm->tilemap_editor.selected_palette & 0x07) << 10;
+    
+    /* Write to VRAM */
+    gm->mem->vram[vram_addr] = tile_entry & 0xFF;
+    gm->mem->vram[vram_addr + 1] = (tile_entry >> 8) & 0xFF;
+    
     gm->unsaved_changes = true;
     gamemaker_set_status(gm, "Tile placed");
 }

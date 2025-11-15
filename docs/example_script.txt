@@ -1,0 +1,20 @@
+; SNESE ROM Modification Script Example
+; This is a sample script demonstrating the scripting capabilities
+
+; Set a few bytes in ROM
+SET 10000 42
+SET 10001 FF
+SET 10002 AA
+
+; Set 16-bit values
+SET16 20000 1234
+SET16 20002 ABCD
+
+; Fill a region with a pattern
+FILL 30000 100 00
+
+; Copy data from one location to another
+COPY 10000 40000 10
+
+; Always update checksum after modifications
+CHECKSUM
