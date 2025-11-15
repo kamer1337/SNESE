@@ -62,6 +62,11 @@ typedef struct {
     
     /* Timing */
     u32 instruction_cycles; /* Cycles for current instruction */
+    
+    /* Debug/Breakpoint support */
+    u32 breakpoints[8];  /* Up to 8 breakpoints (24-bit addresses) */
+    u8 breakpoint_count; /* Number of active breakpoints */
+    bool breakpoint_hit; /* Flag indicating breakpoint was hit */
 } CPU;
 
 /* Function declarations */
@@ -111,6 +116,31 @@ void cpu_print_state(const CPU *cpu);
  * Disassemble instruction at current PC
  */
 void cpu_disassemble(const CPU *cpu, char *buffer, size_t size);
+
+/* Breakpoint management */
+
+/*
+ * Add a breakpoint at the specified 24-bit address
+ * Returns true if added successfully, false if breakpoint table is full
+ */
+bool cpu_add_breakpoint(CPU *cpu, u32 address);
+
+/*
+ * Remove a breakpoint at the specified 24-bit address
+ * Returns true if removed successfully, false if not found
+ */
+bool cpu_remove_breakpoint(CPU *cpu, u32 address);
+
+/*
+ * Clear all breakpoints
+ */
+void cpu_clear_breakpoints(CPU *cpu);
+
+/*
+ * Check if there's a breakpoint at the current PC
+ * Returns true if breakpoint exists at current address
+ */
+bool cpu_check_breakpoint(const CPU *cpu);
 
 /* Addressing modes - internal functions */
 u32 cpu_addr_immediate(CPU *cpu);

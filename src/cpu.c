@@ -12,6 +12,8 @@ extern Memory g_memory;
 
 void cpu_init(CPU *cpu) {
     memset(cpu, 0, sizeof(CPU));
+    cpu->breakpoint_count = 0;
+    cpu->breakpoint_hit = false;
     cpu_reset(cpu);
 }
 
@@ -193,6 +195,14 @@ u32 cpu_step(CPU *cpu) {
     u8 opcode;
     
     if (cpu->stopped) {
+        return 1;
+    }
+    
+    /* Check for breakpoint */
+    if (cpu_check_breakpoint(cpu)) {
+        cpu->breakpoint_hit = true;
+        cpu->stopped = true;
+        printf("Breakpoint hit at $%02X:%04X\n", cpu->pbr, cpu->pc);
         return 1;
     }
     
@@ -996,6 +1006,71 @@ u32 cpu_step(CPU *cpu) {
             }
             break;
             
+        /* Block Move Operations */
+        case 0x54:  /* MVN - Block Move Next (incrementing) */
+            {
+                u8 dest_bank = memory_read(&g_memory, (cpu->pbr << 16) | cpu->pc);
+                u8 src_bank = memory_read(&g_memory, (cpu->pbr << 16) | (cpu->pc + 1));
+                cpu->pc += 2;
+                
+                /* Move one byte from [src_bank:X] to [dest_bank:Y] */
+                u32 src_addr = (src_bank << 16) | cpu->x;
+                u32 dest_addr = (dest_bank << 16) | cpu->y;
+                u8 value = memory_read(&g_memory, src_addr);
+                memory_write(&g_memory, dest_addr, value);
+                
+                /* Increment source and destination */
+                cpu->x++;
+                cpu->y++;
+                
+                /* Decrement counter (accumulator) */
+                cpu->a--;
+                
+                /* If A != 0xFFFF, repeat this instruction */
+                if (cpu->a != 0xFFFF) {
+                    cpu->pc -= 3;  /* Re-execute this instruction */
+                }
+                
+                /* Set DBR to destination bank */
+                cpu->dbr = dest_bank;
+                
+                /* 7 cycles per byte moved */
+                cpu->instruction_cycles = 7;
+            }
+            break;
+            
+        case 0x44:  /* MVP - Block Move Previous (decrementing) */
+            {
+                u8 dest_bank = memory_read(&g_memory, (cpu->pbr << 16) | cpu->pc);
+                u8 src_bank = memory_read(&g_memory, (cpu->pbr << 16) | (cpu->pc + 1));
+                cpu->pc += 2;
+                
+                /* Move one byte from [src_bank:X] to [dest_bank:Y] */
+                u32 src_addr = (src_bank << 16) | cpu->x;
+                u32 dest_addr = (dest_bank << 16) | cpu->y;
+                u8 value = memory_read(&g_memory, src_addr);
+                memory_write(&g_memory, dest_addr, value);
+                
+                /* Decrement source and destination */
+                cpu->x--;
+                cpu->y--;
+                
+                /* Decrement counter (accumulator) */
+                cpu->a--;
+                
+                /* If A != 0xFFFF, repeat this instruction */
+                if (cpu->a != 0xFFFF) {
+                    cpu->pc -= 3;  /* Re-execute this instruction */
+                }
+                
+                /* Set DBR to destination bank */
+                cpu->dbr = dest_bank;
+                
+                /* 7 cycles per byte moved */
+                cpu->instruction_cycles = 7;
+            }
+            break;
+            
         default:
             /* Unimplemented opcode */
             printf("Unimplemented opcode: $%02X at $%02X:%04X\n", 
@@ -1266,9 +1341,72 @@ void cpu_disassemble(const CPU *cpu, char *buffer, size_t size) {
         case 0x1B: snprintf(buffer, size, "TCS"); break;
         case 0x3B: snprintf(buffer, size, "TSC"); break;
         case 0xFB: snprintf(buffer, size, "XCE"); break;
+        
+        /* Block Move instructions */
+        case 0x54:
+            snprintf(buffer, size, "MVN $%02X,$%02X",
+                    memory_read(&g_memory, ((cpu->pbr << 16) | cpu->pc) + 1),
+                    memory_read(&g_memory, ((cpu->pbr << 16) | cpu->pc) + 2));
+            break;
+        case 0x44:
+            snprintf(buffer, size, "MVP $%02X,$%02X",
+                    memory_read(&g_memory, ((cpu->pbr << 16) | cpu->pc) + 1),
+                    memory_read(&g_memory, ((cpu->pbr << 16) | cpu->pc) + 2));
+            break;
             
         default:
             snprintf(buffer, size, "??? ($%02X)", opcode);
             break;
     }
+}
+
+/* Breakpoint management functions */
+
+bool cpu_add_breakpoint(CPU *cpu, u32 address) {
+    /* Check if breakpoint table is full */
+    if (cpu->breakpoint_count >= 8) {
+        return false;
+    }
+    
+    /* Check if breakpoint already exists */
+    for (u8 i = 0; i < cpu->breakpoint_count; i++) {
+        if (cpu->breakpoints[i] == address) {
+            return true;  /* Already exists */
+        }
+    }
+    
+    /* Add new breakpoint */
+    cpu->breakpoints[cpu->breakpoint_count] = address;
+    cpu->breakpoint_count++;
+    return true;
+}
+
+bool cpu_remove_breakpoint(CPU *cpu, u32 address) {
+    /* Find and remove the breakpoint */
+    for (u8 i = 0; i < cpu->breakpoint_count; i++) {
+        if (cpu->breakpoints[i] == address) {
+            /* Shift remaining breakpoints down */
+            for (u8 j = i; j < cpu->breakpoint_count - 1; j++) {
+                cpu->breakpoints[j] = cpu->breakpoints[j + 1];
+            }
+            cpu->breakpoint_count--;
+            return true;
+        }
+    }
+    return false;
+}
+
+void cpu_clear_breakpoints(CPU *cpu) {
+    cpu->breakpoint_count = 0;
+}
+
+bool cpu_check_breakpoint(const CPU *cpu) {
+    u32 current_addr = (cpu->pbr << 16) | cpu->pc;
+    
+    for (u8 i = 0; i < cpu->breakpoint_count; i++) {
+        if (cpu->breakpoints[i] == current_addr) {
+            return true;
+        }
+    }
+    return false;
 }
