@@ -107,8 +107,14 @@ void cartridge_unload(Cartridge *cart) {
         cart->sram_data = NULL;
     }
     
+    if (cart->rom_backup) {
+        free(cart->rom_backup);
+        cart->rom_backup = NULL;
+    }
+    
     cart->rom_size = 0;
     cart->sram_size = 0;
+    cart->has_backup = false;
 }
 
 MapperType cartridge_detect_mapper(const u8 *rom_data, u32 rom_size) {
@@ -277,4 +283,102 @@ u16 cartridge_calculate_checksum(const Cartridge *cart) {
     
     /* Mask to 16 bits */
     return (u16)(sum & 0xFFFF);
+}
+
+void cartridge_write_rom(Cartridge *cart, u32 address, u8 value) {
+    if (address < cart->rom_size) {
+        cart->rom_data[address] = value;
+    }
+}
+
+void cartridge_update_checksum(Cartridge *cart) {
+    u32 header_offset;
+    u16 new_checksum;
+    u16 new_complement;
+    
+    /* Calculate new checksum */
+    new_checksum = cartridge_calculate_checksum(cart);
+    new_complement = ~new_checksum;
+    
+    /* Update header in ROM data */
+    header_offset = (cart->mapper == MAPPER_HIROM) ? 
+                    HIROM_HEADER_OFFSET : LOROM_HEADER_OFFSET;
+    
+    if (header_offset + 0x30 <= cart->rom_size) {
+        /* Write checksum complement (offset 0x1C-0x1D) */
+        cart->rom_data[header_offset + 0x1C] = new_complement & 0xFF;
+        cart->rom_data[header_offset + 0x1D] = (new_complement >> 8) & 0xFF;
+        
+        /* Write checksum (offset 0x1E-0x1F) */
+        cart->rom_data[header_offset + 0x1E] = new_checksum & 0xFF;
+        cart->rom_data[header_offset + 0x1F] = (new_checksum >> 8) & 0xFF;
+        
+        /* Update header structure */
+        cart->header.checksum = new_checksum;
+        cart->header.checksum_complement = new_complement;
+    }
+}
+
+int cartridge_save_rom(const Cartridge *cart, const char *filename) {
+    FILE *file;
+    size_t bytes_written;
+    
+    if (!cart->rom_data) {
+        return ERROR;
+    }
+    
+    file = fopen(filename, "wb");
+    if (!file) {
+        return ERROR;
+    }
+    
+    bytes_written = fwrite(cart->rom_data, 1, cart->rom_size, file);
+    fclose(file);
+    
+    if (bytes_written != cart->rom_size) {
+        return ERROR;
+    }
+    
+    return SUCCESS;
+}
+
+int cartridge_backup_rom(Cartridge *cart) {
+    if (!cart->rom_data || cart->rom_size == 0) {
+        return ERROR;
+    }
+    
+    /* Free existing backup if present */
+    if (cart->rom_backup) {
+        free(cart->rom_backup);
+        cart->rom_backup = NULL;
+    }
+    
+    /* Allocate and copy ROM data */
+    cart->rom_backup = (u8 *)malloc(cart->rom_size);
+    if (!cart->rom_backup) {
+        return ERROR;
+    }
+    
+    memcpy(cart->rom_backup, cart->rom_data, cart->rom_size);
+    cart->has_backup = true;
+    
+    return SUCCESS;
+}
+
+int cartridge_restore_rom(Cartridge *cart) {
+    if (!cart->rom_backup || !cart->has_backup) {
+        return ERROR;
+    }
+    
+    if (!cart->rom_data || cart->rom_size == 0) {
+        return ERROR;
+    }
+    
+    /* Restore ROM data from backup */
+    memcpy(cart->rom_data, cart->rom_backup, cart->rom_size);
+    
+    /* Re-parse header */
+    cartridge_parse_header(cart);
+    
+    return SUCCESS;
 }
