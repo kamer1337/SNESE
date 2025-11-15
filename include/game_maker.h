@@ -10,6 +10,7 @@
 #include "types.h"
 #include "cartridge.h"
 #include "memory.h"
+#include "script.h"
 
 /* Game Maker modes */
 typedef enum {
@@ -20,6 +21,7 @@ typedef enum {
     GM_MODE_PALETTE_EDITOR,
     GM_MODE_SCRIPT_EDITOR,
     GM_MODE_ROM_INFO,
+    GM_MODE_SCRIPT_EDITOR,
     GM_MODE_EXIT
 } GameMakerMode;
 
@@ -89,6 +91,9 @@ typedef struct {
     TilemapEditor tilemap_editor;
     PaletteEditor palette_editor;
     ScriptEditor script_editor;
+    
+    /* Scripting context */
+    ScriptContext script_ctx;
     
     /* General state */
     char status_message[128]; /* Status message to display */
@@ -253,6 +258,14 @@ int gamemaker_script_save(const GameMaker *gm, const char *filename);
  * Execute entire script
  */
 int gamemaker_script_run(GameMaker *gm);
+ * Execute script from file
+ */
+int gamemaker_script_execute_file(GameMaker *gm, const char *filename);
+
+/*
+ * Execute script from string
+ */
+int gamemaker_script_execute_string(GameMaker *gm, const char *script);
 
 /* Utility functions */
 

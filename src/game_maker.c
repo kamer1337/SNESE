@@ -51,6 +51,8 @@ void gamemaker_init(GameMaker *gm, Cartridge *cart, Memory *mem) {
     gm->script_editor.num_commands = 0;
     gm->script_editor.current_command = 0;
     memset(gm->script_editor.script_buffer, 0, sizeof(gm->script_editor.script_buffer));
+    /* Initialize script context */
+    script_init(&gm->script_ctx, cart, mem);
     
     gamemaker_set_status(gm, "Game Maker initialized");
 }
@@ -78,7 +80,7 @@ void gamemaker_show_menu(GameMaker *gm) {
     printf("  2. Sprite Editor     - Edit sprite properties\n");
     printf("  3. Tilemap Editor    - Edit background tilemaps\n");
     printf("  4. Palette Editor    - Edit color palettes\n");
-    printf("  5. Script Editor     - ROM patching scripts\n");
+    printf("  5. Script Editor     - Run ROM modification scripts\n");
     printf("  6. ROM Information   - View ROM details\n");
     printf("  7. Save ROM          - Save changes to file\n");
     printf("  8. Exit              - Return to emulator\n");
@@ -164,28 +166,26 @@ void gamemaker_run(GameMaker *gm) {
 }
 
 int gamemaker_save_rom(GameMaker *gm, const char *filename) {
-    FILE *file;
-    
     if (!gm->cart || !gm->cart->rom_data) {
         gamemaker_set_status(gm, "Error: No ROM loaded");
         return ERROR;
     }
     
-    file = fopen(filename, "wb");
-    if (!file) {
-        gamemaker_set_status(gm, "Error: Cannot create output file");
+    /* Update ROM checksum before saving */
+    cartridge_update_checksum(gm->cart);
+    
+    /* Save ROM using cartridge function */
+    if (cartridge_save_rom(gm->cart, filename) != SUCCESS) {
+        gamemaker_set_status(gm, "Error: Cannot save ROM file");
         return ERROR;
     }
-    
-    /* Write ROM data */
-    fwrite(gm->cart->rom_data, 1, gm->cart->rom_size, file);
-    fclose(file);
     
     gm->unsaved_changes = false;
     snprintf(gm->status_message, sizeof(gm->status_message),
              "ROM saved to: %s", filename);
     
     printf("\n%s\n", gm->status_message);
+    printf("Checksum updated: 0x%04X\n", gm->cart->header.checksum);
     printf("Press Enter to continue...");
     fflush(stdout);
     getchar();
@@ -216,6 +216,23 @@ void gamemaker_tile_editor(GameMaker *gm) {
         printf("  [s] Save tile    [x] Export tile data\n");
         printf("  [i] Import tile  [v] View tile hex\n");
         printf("  [q] Return to main menu\n");
+    char input[256];
+    bool editing = true;
+    
+    printf("\n=== Tile Editor ===\n");
+    printf("Edit tile graphics in ROM/VRAM\n\n");
+    
+    while (editing) {
+        gamemaker_tile_editor_display(gm);
+        
+        printf("\nCommands:\n");
+        printf("  l <num>  - Load tile number\n");
+        printf("  s        - Save tile to ROM\n");
+        printf("  v <addr> - View tile at VRAM address\n");
+        printf("  p <pal>  - Change palette (0-7)\n");
+        printf("  e <x> <y> <color> - Edit pixel at (x,y) with color\n");
+        printf("  d        - Display tile data (hex)\n");
+        printf("  b        - Return to main menu\n");
         printf("\nCommand: ");
         fflush(stdout);
         
@@ -402,6 +419,80 @@ void gamemaker_tile_editor(GameMaker *gm) {
                 gamemaker_set_status(gm, "Unknown command");
                 break;
         }
+        /* Parse command */
+        char cmd = input[0];
+        switch (cmd) {
+            case 'l': {
+                u16 tile_num;
+                if (sscanf(input + 1, "%hu", &tile_num) == 1) {
+                    gamemaker_tile_load(gm, tile_num);
+                    printf("Loaded tile %u\n", tile_num);
+                } else {
+                    printf("Usage: l <tile_number>\n");
+                }
+                break;
+            }
+            case 's':
+                gamemaker_tile_save(gm);
+                printf("Tile saved to ROM\n");
+                break;
+            case 'v': {
+                u16 addr;
+                if (sscanf(input + 1, "%hx", &addr) == 1) {
+                    gm->tile_editor.tile_addr = addr;
+                    printf("Viewing VRAM address $%04X\n", addr);
+                } else {
+                    printf("Usage: v <hex_address>\n");
+                }
+                break;
+            }
+            case 'p': {
+                u8 pal;
+                if (sscanf(input + 1, "%hhu", &pal) == 1 && pal < 8) {
+                    gm->tile_editor.current_palette = pal;
+                    printf("Palette set to %u\n", pal);
+                } else {
+                    printf("Usage: p <palette_0-7>\n");
+                }
+                break;
+            }
+            case 'e': {
+                u8 x, y, color;
+                if (sscanf(input + 1, "%hhu %hhu %hhu", &x, &y, &color) == 3) {
+                    if (x < 8 && y < 8) {
+                        gamemaker_tile_edit_pixel(gm, x, y, color);
+                        printf("Pixel (%u,%u) set to color %u\n", x, y, color);
+                    } else {
+                        printf("Error: Coordinates must be 0-7\n");
+                    }
+                } else {
+                    printf("Usage: e <x> <y> <color>\n");
+                }
+                break;
+            }
+            case 'd': {
+                /* Display tile data */
+                printf("\nTile data at address $%04X:\n", gm->tile_editor.tile_addr);
+                if (gm->mem && gm->tile_editor.tile_addr + 16 <= VRAM_SIZE) {
+                    for (u16 i = 0; i < 16; i++) {
+                        if (i % 8 == 0) printf("  ");
+                        printf("%02X ", gm->mem->vram[gm->tile_editor.tile_addr + i]);
+                        if (i % 8 == 7) printf("\n");
+                    }
+                } else {
+                    printf("  (Invalid address or no VRAM)\n");
+                }
+                break;
+            }
+            case 'b':
+                editing = false;
+                break;
+            default:
+                printf("Unknown command\n");
+                break;
+        }
+        
+        printf("\n");
     }
     
     gm->mode = GM_MODE_MAIN_MENU;
@@ -477,6 +568,35 @@ void gamemaker_tile_edit_pixel(GameMaker *gm, u8 x, u8 y, u8 color) {
         gm->mem->vram[addr + 1] |= bit_mask;
     } else {
         gm->mem->vram[addr + 1] &= ~bit_mask;
+    /* SNES tiles are stored in 2bpp, 4bpp, or 8bpp format
+     * For simplicity, we'll handle 2bpp (4 colors) here
+     * Each tile is 8x8 pixels, stored as bitplanes
+     */
+    u16 addr = gm->tile_editor.tile_addr;
+    
+    if (!gm->mem || addr + 16 > VRAM_SIZE) {
+        return;
+    }
+    
+    /* Calculate bit position */
+    u8 row_offset = y;
+    u8 bit_pos = 7 - x;
+    
+    /* For 2bpp: 2 bytes per row, low bit plane first */
+    u8 *low_plane = &gm->mem->vram[addr + row_offset * 2];
+    u8 *high_plane = &gm->mem->vram[addr + row_offset * 2 + 1];
+    
+    /* Set pixel bits */
+    if (color & 0x01) {
+        *low_plane |= (1 << bit_pos);
+    } else {
+        *low_plane &= ~(1 << bit_pos);
+    }
+    
+    if (color & 0x02) {
+        *high_plane |= (1 << bit_pos);
+    } else {
+        *high_plane &= ~(1 << bit_pos);
     }
     
     gm->tile_editor.modified = true;
@@ -490,9 +610,39 @@ void gamemaker_tile_load(GameMaker *gm, u16 tile_num) {
 }
 
 void gamemaker_tile_save(GameMaker *gm) {
-    /* Save tile data back to VRAM */
-    gm->tile_editor.modified = false;
-    gamemaker_set_status(gm, "Tile saved");
+    /* Save tile data from VRAM back to ROM
+     * This requires mapping VRAM address to ROM address
+     * For simplicity, we'll copy VRAM tile data to ROM at appropriate offset
+     */
+    if (!gm->tile_editor.modified) {
+        gamemaker_set_status(gm, "No changes to save");
+        return;
+    }
+    
+    if (!gm->mem || !gm->cart || !gm->cart->rom_data) {
+        gamemaker_set_status(gm, "Error: No ROM or VRAM available");
+        return;
+    }
+    
+    /* For now, we'll save the tile data to a known ROM offset
+     * In a full implementation, this would map to the proper CHR data location
+     */
+    u16 vram_addr = gm->tile_editor.tile_addr;
+    u32 rom_offset = 0x10000;  /* Example: character data starts at bank 2 */
+    
+    if (rom_offset + 16 < gm->cart->rom_size && vram_addr + 16 <= VRAM_SIZE) {
+        /* Copy 16 bytes (one 2bpp tile) from VRAM to ROM */
+        for (u16 i = 0; i < 16; i++) {
+            cartridge_write_rom(gm->cart, rom_offset + vram_addr + i, 
+                               gm->mem->vram[vram_addr + i]);
+        }
+        
+        gm->tile_editor.modified = false;
+        gm->unsaved_changes = true;
+        gamemaker_set_status(gm, "Tile saved to ROM");
+    } else {
+        gamemaker_set_status(gm, "Error: Invalid address range");
+    }
 }
 
 /* Sprite Editor implementation */
@@ -515,6 +665,25 @@ void gamemaker_sprite_editor(GameMaker *gm) {
         printf("  [c] Change palette [h] Toggle H-flip\n");
         printf("  [v] Toggle V-flip  [s] Save changes\n");
         printf("  [l] List all sprites  [q] Return to main menu\n");
+    char input[256];
+    bool editing = true;
+    
+    printf("\n=== Sprite Editor ===\n");
+    printf("Edit sprite properties in OAM\n\n");
+    
+    while (editing) {
+        gamemaker_sprite_editor_display(gm);
+        
+        printf("\nCommands:\n");
+        printf("  n <num>  - Select sprite number (0-127)\n");
+        printf("  x <pos>  - Set X position\n");
+        printf("  y <pos>  - Set Y position\n");
+        printf("  t <tile> - Set tile number\n");
+        printf("  p <pal>  - Set palette (0-7)\n");
+        printf("  h        - Toggle horizontal flip\n");
+        printf("  v        - Toggle vertical flip\n");
+        printf("  s        - Save sprite to OAM\n");
+        printf("  b        - Return to main menu\n");
         printf("\nCommand: ");
         fflush(stdout);
         
@@ -700,6 +869,92 @@ void gamemaker_sprite_editor(GameMaker *gm) {
                 gamemaker_set_status(gm, "Unknown command");
                 break;
         }
+        char cmd = input[0];
+        switch (cmd) {
+            case 'n': {
+                u8 sprite_num;
+                if (sscanf(input + 1, "%hhu", &sprite_num) == 1 && sprite_num < 128) {
+                    gm->sprite_editor.current_sprite = sprite_num;
+                    /* Load sprite data from OAM if available */
+                    if (gm->mem) {
+                        u16 oam_offset = sprite_num * 4;
+                        if (oam_offset + 3 < OAM_SIZE) {
+                            gm->sprite_editor.sprite_x = gm->mem->oam[oam_offset];
+                            gm->sprite_editor.sprite_y = gm->mem->oam[oam_offset + 1];
+                            gm->sprite_editor.sprite_tile = gm->mem->oam[oam_offset + 2];
+                            u8 attrib = gm->mem->oam[oam_offset + 3];
+                            gm->sprite_editor.sprite_palette = (attrib >> 1) & 0x07;
+                            gm->sprite_editor.h_flip = (attrib & 0x40) != 0;
+                            gm->sprite_editor.v_flip = (attrib & 0x80) != 0;
+                        }
+                    }
+                    printf("Selected sprite %u\n", sprite_num);
+                } else {
+                    printf("Usage: n <sprite_0-127>\n");
+                }
+                break;
+            }
+            case 'x': {
+                u8 pos;
+                if (sscanf(input + 1, "%hhu", &pos) == 1) {
+                    gm->sprite_editor.sprite_x = pos;
+                    printf("X position set to %u\n", pos);
+                } else {
+                    printf("Usage: x <position>\n");
+                }
+                break;
+            }
+            case 'y': {
+                u8 pos;
+                if (sscanf(input + 1, "%hhu", &pos) == 1) {
+                    gm->sprite_editor.sprite_y = pos;
+                    printf("Y position set to %u\n", pos);
+                } else {
+                    printf("Usage: y <position>\n");
+                }
+                break;
+            }
+            case 't': {
+                u8 tile;
+                if (sscanf(input + 1, "%hhu", &tile) == 1) {
+                    gm->sprite_editor.sprite_tile = tile;
+                    printf("Tile set to %u\n", tile);
+                } else {
+                    printf("Usage: t <tile_number>\n");
+                }
+                break;
+            }
+            case 'p': {
+                u8 pal;
+                if (sscanf(input + 1, "%hhu", &pal) == 1 && pal < 8) {
+                    gm->sprite_editor.sprite_palette = pal;
+                    printf("Palette set to %u\n", pal);
+                } else {
+                    printf("Usage: p <palette_0-7>\n");
+                }
+                break;
+            }
+            case 'h':
+                gm->sprite_editor.h_flip = !gm->sprite_editor.h_flip;
+                printf("Horizontal flip: %s\n", gm->sprite_editor.h_flip ? "On" : "Off");
+                break;
+            case 'v':
+                gm->sprite_editor.v_flip = !gm->sprite_editor.v_flip;
+                printf("Vertical flip: %s\n", gm->sprite_editor.v_flip ? "On" : "Off");
+                break;
+            case 's':
+                gamemaker_sprite_update(gm);
+                printf("Sprite saved to OAM\n");
+                break;
+            case 'b':
+                editing = false;
+                break;
+            default:
+                printf("Unknown command\n");
+                break;
+        }
+        
+        printf("\n");
     }
     
     gm->mode = GM_MODE_MAIN_MENU;
@@ -735,8 +990,33 @@ void gamemaker_sprite_editor_display(const GameMaker *gm) {
 }
 
 void gamemaker_sprite_update(GameMaker *gm) {
+    if (!gm->mem) {
+        gamemaker_set_status(gm, "Error: No OAM available");
+        return;
+    }
+    
+    /* Calculate OAM offset for current sprite (4 bytes per sprite) */
+    u16 oam_offset = gm->sprite_editor.current_sprite * 4;
+    
+    if (oam_offset + 3 >= OAM_SIZE) {
+        gamemaker_set_status(gm, "Error: Invalid sprite number");
+        return;
+    }
+    
+    /* Write sprite data to OAM */
+    gm->mem->oam[oam_offset] = gm->sprite_editor.sprite_x;
+    gm->mem->oam[oam_offset + 1] = gm->sprite_editor.sprite_y;
+    gm->mem->oam[oam_offset + 2] = gm->sprite_editor.sprite_tile;
+    
+    /* Build attribute byte */
+    u8 attrib = 0;
+    attrib |= (gm->sprite_editor.sprite_palette & 0x07) << 1;
+    if (gm->sprite_editor.h_flip) attrib |= 0x40;
+    if (gm->sprite_editor.v_flip) attrib |= 0x80;
+    gm->mem->oam[oam_offset + 3] = attrib;
+    
     gm->unsaved_changes = true;
-    gamemaker_set_status(gm, "Sprite updated");
+    gamemaker_set_status(gm, "Sprite updated in OAM");
 }
 
 /* Tilemap Editor implementation */
@@ -758,6 +1038,24 @@ void gamemaker_tilemap_editor(GameMaker *gm) {
         printf("  [l] Change layer (BG1-4)  [m] Toggle paint mode\n");
         printf("  [v] View tilemap area  [e] Export tilemap\n");
         printf("  [i] Import tilemap     [q] Return to main menu\n");
+    char input[256];
+    bool editing = true;
+    
+    printf("\n=== Tilemap Editor ===\n");
+    printf("Edit background layer tilemaps\n\n");
+    
+    while (editing) {
+        gamemaker_tilemap_editor_display(gm);
+        
+        printf("\nCommands:\n");
+        printf("  l <layer>      - Select BG layer (0-3)\n");
+        printf("  t <tile>       - Select tile to place\n");
+        printf("  p <palette>    - Select palette (0-7)\n");
+        printf("  m <x> <y>      - Move cursor to position\n");
+        printf("  s              - Place selected tile at cursor\n");
+        printf("  c              - Toggle paint mode\n");
+        printf("  v              - View tilemap at cursor area\n");
+        printf("  b              - Return to main menu\n");
         printf("\nCommand: ");
         fflush(stdout);
         
@@ -765,148 +1063,106 @@ void gamemaker_tilemap_editor(GameMaker *gm) {
             break;
         }
         
-        choice = input[0];
-        
-        switch (choice) {
-            case 'w':
-            case 'W':
-                if (gm->tilemap_editor.cursor_y > 0) {
-                    gm->tilemap_editor.cursor_y--;
-                }
-                gamemaker_set_status(gm, "Cursor moved up");
-                break;
-                
-            case 's':
-            case 'S':
-                if (gm->tilemap_editor.cursor_y < 31) {
-                    gm->tilemap_editor.cursor_y++;
-                }
-                gamemaker_set_status(gm, "Cursor moved down");
-                break;
-                
-            case 'a':
-            case 'A':
-                if (gm->tilemap_editor.cursor_x > 0) {
-                    gm->tilemap_editor.cursor_x--;
-                }
-                gamemaker_set_status(gm, "Cursor moved left");
-                break;
-                
-            case 'd':
-            case 'D':
-                if (gm->tilemap_editor.cursor_x < 31) {
-                    gm->tilemap_editor.cursor_x++;
-                }
-                gamemaker_set_status(gm, "Cursor moved right");
-                break;
-                
-            case 'p':
-            case 'P':
-                gamemaker_tilemap_place_tile(gm);
-                break;
-                
-            case 't':
-            case 'T': {
-                u16 tile_num;
-                printf("Enter tile number (0-1023): ");
-                if (scanf("%hu", &tile_num) == 1 && tile_num < 1024) {
-                    getchar();
-                    gm->tilemap_editor.selected_tile = tile_num;
-                    gamemaker_set_status(gm, "Tile selected");
-                } else {
-                    gamemaker_set_status(gm, "Invalid tile number");
-                    getchar();
-                }
-                break;
-            }
-                
-            case 'c':
-            case 'C': {
-                u8 palette;
-                printf("Enter palette (0-7): ");
-                if (scanf("%hhu", &palette) == 1 && palette < 8) {
-                    getchar();
-                    gm->tilemap_editor.selected_palette = palette;
-                    gamemaker_set_status(gm, "Palette changed");
-                } else {
-                    gamemaker_set_status(gm, "Invalid palette");
-                    getchar();
-                }
-                break;
-            }
-                
-            case 'l':
-            case 'L': {
+        char cmd = input[0];
+        switch (cmd) {
+            case 'l': {
                 u8 layer;
-                printf("Enter layer (1-4 for BG1-4): ");
-                if (scanf("%hhu", &layer) == 1 && layer >= 1 && layer <= 4) {
-                    getchar();
-                    gm->tilemap_editor.current_layer = layer - 1;
-                    snprintf(gm->status_message, sizeof(gm->status_message),
-                             "Layer: BG%u", layer);
+                if (sscanf(input + 1, "%hhu", &layer) == 1 && layer < 4) {
+                    gm->tilemap_editor.current_layer = layer;
+                    printf("Selected BG%u\n", layer + 1);
                 } else {
-                    gamemaker_set_status(gm, "Invalid layer");
-                    getchar();
+                    printf("Usage: l <layer_0-3>\n");
                 }
                 break;
             }
-                
-            case 'm':
-            case 'M':
-                gm->tilemap_editor.paint_mode = !gm->tilemap_editor.paint_mode;
-                snprintf(gm->status_message, sizeof(gm->status_message),
-                         "Paint mode: %s", gm->tilemap_editor.paint_mode ? "On" : "Off");
+            case 't': {
+                u16 tile;
+                if (sscanf(input + 1, "%hu", &tile) == 1) {
+                    gm->tilemap_editor.selected_tile = tile;
+                    printf("Selected tile %u\n", tile);
+                } else {
+                    printf("Usage: t <tile_number>\n");
+                }
                 break;
-                
-            case 'v':
-            case 'V': {
-                /* Display a portion of the tilemap around cursor */
-                printf("\n=== Tilemap View (8x8 around cursor) ===\n");
+            }
+            case 'p': {
+                u8 pal;
+                if (sscanf(input + 1, "%hhu", &pal) == 1 && pal < 8) {
+                    gm->tilemap_editor.selected_palette = pal;
+                    printf("Palette set to %u\n", pal);
+                } else {
+                    printf("Usage: p <palette_0-7>\n");
+                }
+                break;
+            }
+            case 'm': {
+                u16 x, y;
+                if (sscanf(input + 1, "%hu %hu", &x, &y) == 2) {
+                    gm->tilemap_editor.cursor_x = x;
+                    gm->tilemap_editor.cursor_y = y;
+                    printf("Cursor moved to (%u, %u)\n", x, y);
+                } else {
+                    printf("Usage: m <x> <y>\n");
+                }
+                break;
+            }
+            case 's':
+                gamemaker_tilemap_place_tile(gm);
+                printf("Tile placed at (%u, %u)\n", 
+                       gm->tilemap_editor.cursor_x, gm->tilemap_editor.cursor_y);
+                break;
+            case 'c':
+                gm->tilemap_editor.paint_mode = !gm->tilemap_editor.paint_mode;
+                printf("Paint mode: %s\n", gm->tilemap_editor.paint_mode ? "On" : "Off");
+                break;
+            case 'v': {
+                /* Display tilemap area around cursor */
+                printf("\nTilemap at cursor area:\n");
                 if (gm->mem) {
-                    /* Calculate tilemap address for current layer */
-                    /* Tilemap is 32x32 tiles, 2 bytes per entry */
-                    u16 base_addr = gm->tilemap_editor.current_layer * 0x800;
+                    /* Display 5x5 grid around cursor */
+                    u16 base_x = (gm->tilemap_editor.cursor_x > 2) ? 
+                                 gm->tilemap_editor.cursor_x - 2 : 0;
+                    u16 base_y = (gm->tilemap_editor.cursor_y > 2) ? 
+                                 gm->tilemap_editor.cursor_y - 2 : 0;
                     
-                    printf("   ");
-                    for (int x = 0; x < 8; x++) {
-                        int cx = (gm->tilemap_editor.cursor_x - 4 + x) & 0x1F;
-                        printf("%02X ", cx);
-                    }
-                    printf("\n");
-                    
-                    for (int y = 0; y < 8; y++) {
-                        int cy = (gm->tilemap_editor.cursor_y - 4 + y) & 0x1F;
-                        printf("%02X ", cy);
-                        
-                        for (int x = 0; x < 8; x++) {
-                            int cx = (gm->tilemap_editor.cursor_x - 4 + x) & 0x1F;
-                            u16 offset = base_addr + (cy * 32 + cx) * 2;
+                    for (u16 y = 0; y < 5; y++) {
+                        printf("  ");
+                        for (u16 x = 0; x < 5; x++) {
+                            u16 tile_x = base_x + x;
+                            u16 tile_y = base_y + y;
                             
-                            if (offset + 1 < VRAM_SIZE) {
-                                u16 tile_data = gm->mem->vram[offset] | 
-                                               (gm->mem->vram[offset + 1] << 8);
-                                printf("%03X ", tile_data & 0x3FF);
+                            /* Calculate VRAM address (simplified) */
+                            u16 vram_addr = tile_y * 32 + tile_x;
+                            
+                            if (vram_addr * 2 + 1 < VRAM_SIZE) {
+                                u16 tile_data = gm->mem->vram[vram_addr * 2] |
+                                               (gm->mem->vram[vram_addr * 2 + 1] << 8);
+                                u16 tile_num = tile_data & 0x3FF;
+                                
+                                if (tile_x == gm->tilemap_editor.cursor_x &&
+                                    tile_y == gm->tilemap_editor.cursor_y) {
+                                    printf("[%03X]", tile_num);
+                                } else {
+                                    printf(" %03X ", tile_num);
+                                }
                             } else {
-                                printf("--- ");
+                                printf(" --- ");
                             }
                         }
                         printf("\n");
                     }
                 }
-                printf("\nPress Enter to continue...");
-                getchar();
                 break;
             }
-                
-            case 'q':
-            case 'Q':
+            case 'b':
                 editing = false;
                 break;
-                
             default:
-                gamemaker_set_status(gm, "Unknown command");
+                printf("Unknown command\n");
                 break;
         }
+        
+        printf("\n");
     }
     
     gm->mode = GM_MODE_MAIN_MENU;
@@ -947,29 +1203,36 @@ void gamemaker_tilemap_editor_display(const GameMaker *gm) {
 
 void gamemaker_tilemap_place_tile(GameMaker *gm) {
     if (!gm->mem) {
+        gamemaker_set_status(gm, "Error: No VRAM available");
         return;
     }
     
-    /* Calculate address in VRAM */
-    u16 base_addr = gm->tilemap_editor.current_layer * 0x800;
-    u16 offset = base_addr + (gm->tilemap_editor.cursor_y * 32 + 
-                              gm->tilemap_editor.cursor_x) * 2;
+    /* Calculate VRAM address for tilemap
+     * SNES tilemap format: 32x32 tiles per screen
+     * Each tile entry is 2 bytes with format:
+     * vhopppcc cccccccc
+     * v = vertical flip, h = horizontal flip
+     * o = priority, ppp = palette, cccccccccc = tile number
+     */
+    u16 tile_x = gm->tilemap_editor.cursor_x;
+    u16 tile_y = gm->tilemap_editor.cursor_y;
     
-    if (offset + 1 >= VRAM_SIZE) {
-        gamemaker_set_status(gm, "Invalid tilemap address");
+    /* Simple 32x32 tilemap addressing */
+    u16 vram_offset = tile_y * 32 + tile_x;
+    u16 vram_addr = vram_offset * 2;
+    
+    if (vram_addr + 1 >= VRAM_SIZE) {
+        gamemaker_set_status(gm, "Error: Cursor position out of range");
         return;
     }
     
-    /* Build tile data word: VHPP CCCC TTTT TTTT */
-    /* V = vertical flip, H = horizontal flip */
-    /* PP = priority, CCCC = palette */
-    /* TTTT TTTT TTTT = tile number (10 bits) */
-    u16 tile_data = gm->tilemap_editor.selected_tile & 0x3FF;
-    tile_data |= (gm->tilemap_editor.selected_palette & 7) << 10;
+    /* Build tile entry */
+    u16 tile_entry = gm->tilemap_editor.selected_tile & 0x3FF;
+    tile_entry |= (gm->tilemap_editor.selected_palette & 0x07) << 10;
     
     /* Write to VRAM */
-    gm->mem->vram[offset] = tile_data & 0xFF;
-    gm->mem->vram[offset + 1] = (tile_data >> 8) & 0xFF;
+    gm->mem->vram[vram_addr] = tile_entry & 0xFF;
+    gm->mem->vram[vram_addr + 1] = (tile_entry >> 8) & 0xFF;
     
     gm->unsaved_changes = true;
     gamemaker_set_status(gm, "Tile placed");
@@ -988,24 +1251,25 @@ void gamemaker_tilemap_move_cursor(GameMaker *gm, s16 dx, s16 dy) {
 /* Palette Editor implementation */
 
 void gamemaker_palette_editor(GameMaker *gm) {
-    char input[64];
-    char choice;
+    char input[256];
     bool editing = true;
     
     printf("\n=== Palette Editor ===\n");
+    printf("Edit color palettes (15-bit RGB)\n\n");
     
     while (editing) {
-        printf("\n");
         gamemaker_palette_editor_display(gm);
         
-        printf("\nPalette Editor Commands:\n");
-        printf("  [n] Next color     [p] Previous color\n");
-        printf("  [P] Next palette   [O] Previous palette\n");
-        printf("  [r] Set red (0-31)     [g] Set green (0-31)\n");
-        printf("  [b] Set blue (0-31)    [h] Set hex value\n");
-        printf("  [s] Save color     [v] View full palette\n");
-        printf("  [e] Export palette [i] Import palette\n");
-        printf("  [q] Return to main menu\n");
+        printf("\nCommands:\n");
+        printf("  p <pal>       - Select palette (0-15)\n");
+        printf("  c <color>     - Select color in palette (0-15)\n");
+        printf("  r <val>       - Set red component (0-31)\n");
+        printf("  g <val>       - Set green component (0-31)\n");
+        printf("  b <val>       - Set blue component (0-31)\n");
+        printf("  s <hex>       - Set full 15-bit color value (e.g., 7FFF)\n");
+        printf("  d             - Display current palette\n");
+        printf("  w             - Write to CGRAM\n");
+        printf("  x             - Return to main menu\n");
         printf("\nCommand: ");
         fflush(stdout);
         
@@ -1013,242 +1277,131 @@ void gamemaker_palette_editor(GameMaker *gm) {
             break;
         }
         
-        choice = input[0];
-        
-        switch (choice) {
-            case 'n':
-            case 'N':
-                gm->palette_editor.current_color = (gm->palette_editor.current_color + 1) & 0xF;
-                /* Load color from CGRAM */
-                if (gm->mem) {
-                    u16 addr = (gm->palette_editor.current_palette * 16 + 
-                               gm->palette_editor.current_color) * 2;
-                    if (addr + 1 < CGRAM_SIZE) {
-                        gm->palette_editor.color_value = 
-                            gm->mem->cgram[addr] | (gm->mem->cgram[addr + 1] << 8);
-                    }
-                }
-                gamemaker_set_status(gm, "Moved to next color");
-                break;
-                
-            case 'p':
-            case 'P':
-                if (choice == 'p') {
-                    gm->palette_editor.current_color = (gm->palette_editor.current_color + 15) & 0xF;
-                    /* Load color from CGRAM */
+        char cmd = input[0];
+        switch (cmd) {
+            case 'p': {
+                u8 pal;
+                if (sscanf(input + 1, "%hhu", &pal) == 1 && pal < 16) {
+                    gm->palette_editor.current_palette = pal;
+                    /* Load color 0 of this palette */
+                    gm->palette_editor.current_color = 0;
                     if (gm->mem) {
-                        u16 addr = (gm->palette_editor.current_palette * 16 + 
-                                   gm->palette_editor.current_color) * 2;
-                        if (addr + 1 < CGRAM_SIZE) {
+                        u16 cgram_offset = (pal * 16) * 2;
+                        if (cgram_offset + 1 < CGRAM_SIZE) {
                             gm->palette_editor.color_value = 
-                                gm->mem->cgram[addr] | (gm->mem->cgram[addr + 1] << 8);
+                                gm->mem->cgram[cgram_offset] |
+                                (gm->mem->cgram[cgram_offset + 1] << 8);
                         }
                     }
-                    gamemaker_set_status(gm, "Moved to previous color");
+                    printf("Selected palette %u\n", pal);
                 } else {
-                    /* 'P' - Next palette */
-                    gm->palette_editor.current_palette = (gm->palette_editor.current_palette + 1) & 0xF;
-                    /* Load color from CGRAM */
+                    printf("Usage: p <palette_0-15>\n");
+                }
+                break;
+            }
+            case 'c': {
+                u8 color;
+                if (sscanf(input + 1, "%hhu", &color) == 1 && color < 16) {
+                    gm->palette_editor.current_color = color;
+                    /* Load this color value */
                     if (gm->mem) {
-                        u16 addr = (gm->palette_editor.current_palette * 16 + 
-                                   gm->palette_editor.current_color) * 2;
-                        if (addr + 1 < CGRAM_SIZE) {
+                        u16 cgram_offset = (gm->palette_editor.current_palette * 16 + color) * 2;
+                        if (cgram_offset + 1 < CGRAM_SIZE) {
                             gm->palette_editor.color_value = 
-                                gm->mem->cgram[addr] | (gm->mem->cgram[addr + 1] << 8);
+                                gm->mem->cgram[cgram_offset] |
+                                (gm->mem->cgram[cgram_offset + 1] << 8);
                         }
                     }
-                    gamemaker_set_status(gm, "Moved to next palette");
+                    printf("Selected color %u\n", color);
+                } else {
+                    printf("Usage: c <color_0-15>\n");
                 }
                 break;
-                
-            case 'O':
-                gm->palette_editor.current_palette = (gm->palette_editor.current_palette + 15) & 0xF;
-                /* Load color from CGRAM */
-                if (gm->mem) {
-                    u16 addr = (gm->palette_editor.current_palette * 16 + 
-                               gm->palette_editor.current_color) * 2;
-                    if (addr + 1 < CGRAM_SIZE) {
-                        gm->palette_editor.color_value = 
-                            gm->mem->cgram[addr] | (gm->mem->cgram[addr + 1] << 8);
-                    }
-                }
-                gamemaker_set_status(gm, "Moved to previous palette");
-                break;
-                
-            case 'r':
-            case 'R': {
-                u8 red;
-                printf("Enter red value (0-31): ");
-                if (scanf("%hhu", &red) == 1 && red <= 31) {
-                    getchar();
+            }
+            case 'r': {
+                u8 val;
+                if (sscanf(input + 1, "%hhu", &val) == 1 && val < 32) {
                     gm->palette_editor.color_value = 
-                        (gm->palette_editor.color_value & 0x7FE0) | red;
-                    gm->palette_editor.modified = true;
-                    gamemaker_set_status(gm, "Red value set");
+                        (gm->palette_editor.color_value & 0x7FE0) | (val & 0x1F);
+                    printf("Red set to %u\n", val);
                 } else {
-                    gamemaker_set_status(gm, "Invalid red value");
-                    getchar();
+                    printf("Usage: r <value_0-31>\n");
                 }
                 break;
             }
-                
-            case 'g':
-            case 'G':
-                if (choice == 'g') {
-                    u8 green;
-                    printf("Enter green value (0-31): ");
-                    if (scanf("%hhu", &green) == 1 && green <= 31) {
-                        getchar();
-                        gm->palette_editor.color_value = 
-                            (gm->palette_editor.color_value & 0x7C1F) | (green << 5);
-                        gm->palette_editor.modified = true;
-                        gamemaker_set_status(gm, "Green value set");
-                    } else {
-                        gamemaker_set_status(gm, "Invalid green value");
-                        getchar();
-                    }
-                }
-                break;
-                
-            case 'b':
-            case 'B': {
-                u8 blue;
-                printf("Enter blue value (0-31): ");
-                if (scanf("%hhu", &blue) == 1 && blue <= 31) {
-                    getchar();
+            case 'g': {
+                u8 val;
+                if (sscanf(input + 1, "%hhu", &val) == 1 && val < 32) {
                     gm->palette_editor.color_value = 
-                        (gm->palette_editor.color_value & 0x03FF) | (blue << 10);
-                    gm->palette_editor.modified = true;
-                    gamemaker_set_status(gm, "Blue value set");
+                        (gm->palette_editor.color_value & 0x7C1F) | ((val & 0x1F) << 5);
+                    printf("Green set to %u\n", val);
                 } else {
-                    gamemaker_set_status(gm, "Invalid blue value");
-                    getchar();
+                    printf("Usage: g <value_0-31>\n");
                 }
                 break;
             }
-                
-            case 'h':
-            case 'H': {
-                u16 hex_value;
-                printf("Enter 15-bit hex value (0-7FFF): ");
-                if (scanf("%hx", &hex_value) == 1 && hex_value <= 0x7FFF) {
-                    getchar();
-                    gm->palette_editor.color_value = hex_value;
-                    gm->palette_editor.modified = true;
-                    gamemaker_set_status(gm, "Hex value set");
+            case 'b': {
+                u8 val;
+                if (sscanf(input + 1, "%hhu", &val) == 1 && val < 32) {
+                    gm->palette_editor.color_value = 
+                        (gm->palette_editor.color_value & 0x03FF) | ((val & 0x1F) << 10);
+                    printf("Blue set to %u\n", val);
                 } else {
-                    gamemaker_set_status(gm, "Invalid hex value");
-                    getchar();
+                    printf("Usage: b <value_0-31>\n");
                 }
                 break;
             }
-                
-            case 's':
-            case 'S':
-                if (gm->mem) {
-                    u16 addr = (gm->palette_editor.current_palette * 16 + 
-                               gm->palette_editor.current_color) * 2;
-                    if (addr + 1 < CGRAM_SIZE) {
-                        gm->mem->cgram[addr] = gm->palette_editor.color_value & 0xFF;
-                        gm->mem->cgram[addr + 1] = (gm->palette_editor.color_value >> 8) & 0xFF;
-                        gm->palette_editor.modified = false;
-                        gm->unsaved_changes = true;
-                        gamemaker_set_status(gm, "Color saved to CGRAM");
-                    }
+            case 's': {
+                u16 val;
+                if (sscanf(input + 1, "%hx", &val) == 1) {
+                    gamemaker_palette_set_color(gm, val);
+                    printf("Color set to $%04X\n", val & 0x7FFF);
+                } else {
+                    printf("Usage: s <hex_value>\n");
                 }
                 break;
-                
-            case 'v':
-            case 'V': {
-                /* Display entire palette */
-                printf("\n=== Palette %u (All Colors) ===\n", gm->palette_editor.current_palette);
-                printf("Idx  RGB Value  R   G   B\n");
-                printf("---  ---------  --  --  --\n");
+            }
+            case 'd': {
+                /* Display current palette */
+                printf("\nPalette %u colors:\n", gm->palette_editor.current_palette);
                 if (gm->mem) {
-                    for (int i = 0; i < 16; i++) {
-                        u16 addr = (gm->palette_editor.current_palette * 16 + i) * 2;
-                        if (addr + 1 < CGRAM_SIZE) {
-                            u16 color = gm->mem->cgram[addr] | (gm->mem->cgram[addr + 1] << 8);
+                    for (u8 i = 0; i < 16; i++) {
+                        u16 cgram_offset = (gm->palette_editor.current_palette * 16 + i) * 2;
+                        if (cgram_offset + 1 < CGRAM_SIZE) {
+                            u16 color = gm->mem->cgram[cgram_offset] |
+                                       (gm->mem->cgram[cgram_offset + 1] << 8);
                             u8 r = color & 0x1F;
                             u8 g = (color >> 5) & 0x1F;
                             u8 b = (color >> 10) & 0x1F;
-                            printf("%2d   $%04X      %2u  %2u  %2u\n", i, color, r, g, b);
+                            printf("  %2u: $%04X  RGB(%2u,%2u,%2u)\n", i, color, r, g, b);
                         }
                     }
                 }
-                printf("\nPress Enter to continue...");
-                getchar();
                 break;
             }
-                
-            case 'e':
-            case 'E': {
-                char filename[256];
-                printf("Enter filename to export palette: ");
-                if (fgets(filename, sizeof(filename), stdin)) {
-                    size_t len = strlen(filename);
-                    if (len > 0 && filename[len-1] == '\n') {
-                        filename[len-1] = '\0';
-                    }
-                    if (gamemaker_palette_export(gm, filename) == SUCCESS) {
-                        gamemaker_set_status(gm, "Palette exported");
-                    } else {
-                        gamemaker_set_status(gm, "Export failed");
-                    }
-                }
-                break;
-            }
-                
-            case 'i':
-            case 'I': {
-                char filename[256];
-                printf("Enter filename to import palette: ");
-                if (fgets(filename, sizeof(filename), stdin)) {
-                    size_t len = strlen(filename);
-                    if (len > 0 && filename[len-1] == '\n') {
-                        filename[len-1] = '\0';
-                    }
-                    if (gamemaker_palette_import(gm, filename) == SUCCESS) {
-                        /* Reload current color */
-                        if (gm->mem) {
-                            u16 addr = (gm->palette_editor.current_palette * 16 + 
+            case 'w':
+                /* Write current color to CGRAM */
+                if (gm->mem) {
+                    u16 cgram_offset = (gm->palette_editor.current_palette * 16 + 
                                        gm->palette_editor.current_color) * 2;
-                            if (addr + 1 < CGRAM_SIZE) {
-                                gm->palette_editor.color_value = 
-                                    gm->mem->cgram[addr] | (gm->mem->cgram[addr + 1] << 8);
-                            }
-                        }
-                        gamemaker_set_status(gm, "Palette imported");
-                    } else {
-                        gamemaker_set_status(gm, "Import failed");
+                    if (cgram_offset + 1 < CGRAM_SIZE) {
+                        gm->mem->cgram[cgram_offset] = gm->palette_editor.color_value & 0xFF;
+                        gm->mem->cgram[cgram_offset + 1] = (gm->palette_editor.color_value >> 8) & 0xFF;
+                        gm->palette_editor.modified = true;
+                        gm->unsaved_changes = true;
+                        printf("Color written to CGRAM\n");
                     }
                 }
                 break;
-            }
-                
-            case 'q':
-            case 'Q':
-                if (gm->palette_editor.modified) {
-                    if (gamemaker_confirm("Save current color before exiting?")) {
-                        /* Save code already implemented in 's' case */
-                        if (gm->mem) {
-                            u16 addr = (gm->palette_editor.current_palette * 16 + 
-                                       gm->palette_editor.current_color) * 2;
-                            if (addr + 1 < CGRAM_SIZE) {
-                                gm->mem->cgram[addr] = gm->palette_editor.color_value & 0xFF;
-                                gm->mem->cgram[addr + 1] = (gm->palette_editor.color_value >> 8) & 0xFF;
-                                gm->unsaved_changes = true;
-                            }
-                        }
-                    }
-                }
+            case 'x':
                 editing = false;
                 break;
-                
             default:
-                gamemaker_set_status(gm, "Unknown command");
+                printf("Unknown command\n");
                 break;
         }
+        
+        printf("\n");
     }
     
     gm->mode = GM_MODE_MAIN_MENU;
@@ -1342,6 +1495,89 @@ int gamemaker_palette_import(GameMaker *gm, const char *filename) {
     }
     
     return ERROR;
+}
+
+/* Script Editor implementation */
+
+void gamemaker_script_editor(GameMaker *gm) {
+    char input[256];
+    bool editing = true;
+    
+    printf("\n=== Script Editor ===\n");
+    printf("Execute ROM modification scripts\n\n");
+    
+    while (editing) {
+        printf("\nScript Editor:\n");
+        printf("  f <file>  - Execute script from file\n");
+        printf("  e <cmd>   - Execute single command\n");
+        printf("  h         - Show scripting help\n");
+        printf("  b         - Return to main menu\n");
+        printf("\nCommand: ");
+        fflush(stdout);
+        
+        if (!fgets(input, sizeof(input), stdin)) {
+            break;
+        }
+        
+        char cmd = input[0];
+        switch (cmd) {
+            case 'f': {
+                char filename[256];
+                if (sscanf(input + 1, " %255s", filename) == 1) {
+                    printf("Executing script: %s\n", filename);
+                    if (gamemaker_script_execute_file(gm, filename) == SUCCESS) {
+                        printf("Script executed successfully\n");
+                        gm->unsaved_changes = true;
+                    } else {
+                        const char *error = script_get_error(&gm->script_ctx);
+                        printf("Script error: %s\n", error ? error : "Unknown error");
+                    }
+                } else {
+                    printf("Usage: f <filename>\n");
+                }
+                break;
+            }
+            case 'e': {
+                /* Execute single command */
+                char *script_cmd = input + 1;
+                while (*script_cmd == ' ') script_cmd++;
+                
+                if (*script_cmd != '\0' && *script_cmd != '\n') {
+                    if (gamemaker_script_execute_string(gm, script_cmd) == SUCCESS) {
+                        printf("Command executed\n");
+                        gm->unsaved_changes = true;
+                    } else {
+                        const char *error = script_get_error(&gm->script_ctx);
+                        printf("Error: %s\n", error ? error : "Unknown error");
+                    }
+                } else {
+                    printf("Usage: e <command>\n");
+                }
+                break;
+            }
+            case 'h':
+                script_print_help();
+                break;
+            case 'b':
+                editing = false;
+                break;
+            default:
+                printf("Unknown command\n");
+                break;
+        }
+        
+        printf("\n");
+    }
+    
+    gm->mode = GM_MODE_MAIN_MENU;
+}
+
+int gamemaker_script_execute_file(GameMaker *gm, const char *filename) {
+    return script_execute_file(&gm->script_ctx, filename);
+}
+
+int gamemaker_script_execute_string(GameMaker *gm, const char *script) {
+    return script_execute_string(&gm->script_ctx, script);
 }
 
 /* Utility functions */

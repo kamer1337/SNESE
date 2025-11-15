@@ -86,6 +86,7 @@ help:
 	@echo "  all      - Build the emulator (default)"
 	@echo "  clean    - Remove build artifacts"
 	@echo "  debug    - Build with debug symbols"
+	@echo "  test     - Run test suite"
 	@echo "  install  - Install to /usr/local/bin"
 	@echo "  uninstall- Remove from /usr/local/bin"
 	@echo "  info     - Display build configuration"
@@ -98,6 +99,16 @@ help:
 	@echo "  make              # Build release version"
 	@echo "  make DEBUG=1      # Build debug version"
 	@echo "  make clean all    # Clean rebuild"
+	@echo "  make test         # Run tests"
 
 # Phony targets
-.PHONY: all clean install uninstall debug info help
+.PHONY: all clean install uninstall debug info help test
+
+# Test target
+test:
+	@echo "Running test suite..."
+	@cd tests && $(MAKE) test
+
+# Clean tests
+test-clean:
+	@cd tests && $(MAKE) clean

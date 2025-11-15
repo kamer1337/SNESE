@@ -1,579 +1,360 @@
-# SNESE Game Maker - User Guide
+# SNESE Game Maker User Guide
 
-## Table of Contents
+## Overview
 
-1. [Introduction](#introduction)
-2. [Getting Started](#getting-started)
-3. [Main Menu](#main-menu)
-4. [Tile Editor](#tile-editor)
-5. [Sprite Editor](#sprite-editor)
-6. [Tilemap Editor](#tilemap-editor)
-7. [Palette Editor](#palette-editor)
-8. [Script Editor](#script-editor)
-9. [Saving Your Work](#saving-your-work)
-10. [Tips and Tricks](#tips-and-tricks)
-11. [Troubleshooting](#troubleshooting)
+The SNESE Game Maker is a built-in ROM editing tool that allows you to modify SNES games at runtime. It provides editors for tiles, sprites, palettes, tilemaps, and a scripting language for advanced ROM modifications.
 
-## Introduction
+## Launching Game Maker
 
-The SNESE Game Maker is an integrated ROM editing tool that allows you to modify SNES game assets including:
-- Graphics tiles
-- Sprite positions and properties
-- Background tilemaps
-- Color palettes
-- ROM data via scripting
+To launch the Game Maker mode:
 
-This tool is designed for educational purposes and to help you understand how SNES games are structured.
-
-## Getting Started
-
-### Prerequisites
-- A valid SNES ROM file (.sfc or .smc format)
-- Basic understanding of hexadecimal numbers
-- Familiarity with tile-based graphics
-
-### Launching Game Maker
-
-To enter Game Maker mode:
 ```bash
-./snesemu --maker your_rom.sfc
+./snesemu --maker rom_file.sfc
 ```
-
-You will see the main menu with several editing options.
 
 ## Main Menu
 
-The main menu provides access to all Game Maker features:
+The Game Maker main menu provides access to all editing tools:
 
-```
-Main Menu:
-  1. Tile Editor       - Edit tile graphics
-  2. Sprite Editor     - Edit sprite properties
-  3. Tilemap Editor    - Edit background tilemaps
-  4. Palette Editor    - Edit color palettes
-  5. Script Editor     - ROM patching scripts
-  6. ROM Information   - View ROM details
-  7. Save ROM          - Save changes to file
-  8. Exit              - Return to emulator
-```
-
-### Navigation
-- Enter a number (1-8) to select an option
-- Press Enter to confirm
+1. **Tile Editor** - Edit tile graphics pixel by pixel
+2. **Sprite Editor** - Modify sprite properties (position, tile, palette, flips)
+3. **Tilemap Editor** - Edit background layer tilemaps
+4. **Palette Editor** - Edit color palettes with RGB controls
+5. **Script Editor** - Execute ROM modification scripts
+6. **ROM Information** - View detailed ROM information
+7. **Save ROM** - Export modified ROM to a new file
+8. **Exit** - Return to emulator or exit
 
 ## Tile Editor
 
-The Tile Editor lets you view and modify individual tile graphics.
-
-### What are Tiles?
-Tiles are 8x8 pixel graphics used to build game visuals. The SNES supports:
-- **2bpp tiles**: 4 colors per tile (16 bytes)
-- **4bpp tiles**: 16 colors per tile (32 bytes)
-
-The current implementation focuses on 2bpp tiles.
+The Tile Editor allows you to edit individual tiles pixel by pixel.
 
 ### Commands
 
-**Navigation:**
-- `n` - Next tile
-- `p` - Previous tile
-- `g` - Go to specific tile number (0-1023)
+- `l <num>` - Load tile number (0-1023)
+- `s` - Save tile to ROM
+- `v <addr>` - View tile at VRAM address (hex)
+- `p <pal>` - Change palette (0-7)
+- `e <x> <y> <color>` - Edit pixel at (x,y) with color index
+- `d` - Display tile data in hex
+- `b` - Return to main menu
 
-**Editing:**
-- `e` - Edit pixel (specify X: 0-7, Y: 0-7, Color: 0-3)
-- `c` - Change palette (0-7)
-- `z` - Change zoom level (1x-4x)
+### Example Session
 
-**Data Operations:**
-- `v` - View tile data in hexadecimal
-- `s` - Save tile to VRAM
-- `x` - Export tile to file
-- `i` - Import tile from file
+```
+l 100        # Load tile 100
+p 2          # Use palette 2
+e 0 0 3      # Set pixel at (0,0) to color 3
+e 1 0 3      # Set pixel at (1,0) to color 3
+d            # Display hex data
+s            # Save changes
+```
 
-**Exit:**
-- `q` - Return to main menu
+### Tile Format
 
-### Visual Display
+SNES tiles are 8x8 pixels stored in planar format:
+- 2bpp (4 colors): 16 bytes per tile
+- 4bpp (16 colors): 32 bytes per tile
+- 8bpp (256 colors): 64 bytes per tile
 
-Tiles are displayed using ASCII art:
-- `  ` - Transparent (color 0)
-- `░░` - Color 1
-- `▒▒` - Color 2
-- `██` - Color 3
-
-### Example Workflow
-
-1. Launch Tile Editor
-2. Press `g` and enter `42` to go to tile 42
-3. Press `e` to edit a pixel
-   - Enter X: `3`
-   - Enter Y: `4`
-   - Enter color: `2`
-4. Press `s` to save
-5. Press `q` to exit
+Currently the editor supports 2bpp format.
 
 ## Sprite Editor
 
-The Sprite Editor manages sprite objects (OAM entries).
-
-### What are Sprites?
-Sprites are movable graphics objects. The SNES supports:
-- 128 sprites maximum
-- Position control (X, Y)
-- Tile assignment
-- Palette selection
-- Flipping (horizontal/vertical)
+The Sprite Editor lets you modify Object Attribute Memory (OAM) entries.
 
 ### Commands
 
-**Navigation:**
-- `n` - Next sprite
-- `p` - Previous sprite
-- `g` - Go to specific sprite (0-127)
-
-**Properties:**
-- `x` - Set X position (0-255)
-- `y` - Set Y position (0-255)
-- `t` - Set tile number (0-255)
-- `c` - Change palette (0-7)
-
-**Transformations:**
+- `n <num>` - Select sprite number (0-127)
+- `x <pos>` - Set X position (0-255)
+- `y <pos>` - Set Y position (0-255)
+- `t <tile>` - Set tile number
+- `p <pal>` - Set palette (0-7)
 - `h` - Toggle horizontal flip
 - `v` - Toggle vertical flip
-
-**Operations:**
 - `s` - Save sprite to OAM
-- `l` - List all sprites
-- `q` - Return to main menu
+- `b` - Return to main menu
 
-### Example Workflow
+### Example Session
 
-1. Launch Sprite Editor
-2. Press `g` and enter `0` to edit sprite 0
-3. Press `x` and enter `100` for X position
-4. Press `y` and enter `80` for Y position
-5. Press `t` and enter `10` for tile number
-6. Press `c` and enter `1` for palette
-7. Press `h` to flip horizontally
-8. Press `s` to save to OAM
-9. Press `q` to exit
-
-## Tilemap Editor
-
-The Tilemap Editor allows you to place tiles to create backgrounds.
-
-### What are Tilemaps?
-Tilemaps define which tiles appear at each position on screen:
-- 4 layers (BG1, BG2, BG3, BG4)
-- 32×32 tiles per layer
-- Each entry specifies tile number, palette, and flip
-
-### Commands
-
-**Navigation:**
-- `w` - Move cursor up
-- `s` - Move cursor down
-- `a` - Move cursor left
-- `d` - Move cursor right
-
-**Editing:**
-- `p` - Place tile at cursor
-- `t` - Select tile to place (0-1023)
-- `c` - Change palette (0-7)
-- `l` - Change layer (1-4 for BG1-4)
-
-**Modes:**
-- `m` - Toggle paint mode (auto-advance cursor)
-
-**View:**
-- `v` - View 8×8 tilemap area around cursor
-- `q` - Return to main menu
-
-### Example Workflow
-
-1. Launch Tilemap Editor
-2. Press `l` and enter `1` to select BG1
-3. Press `t` and enter `5` to select tile 5
-4. Press `c` and enter `0` to select palette 0
-5. Use `w`, `a`, `s`, `d` to move cursor
-6. Press `p` to place tile
-7. Press `m` to enable paint mode
-8. Use `d` repeatedly to paint a row
-9. Press `q` to exit
+```
+n 0          # Select sprite 0
+x 64         # Position at X=64
+y 96         # Position at Y=96
+t 10         # Use tile 10
+p 3          # Use palette 3
+s            # Save changes
+```
 
 ## Palette Editor
 
-The Palette Editor lets you modify color palettes.
-
-### What are Palettes?
-The SNES uses palettes to define colors:
-- 16 palettes total (0-15)
-- 16 colors per palette
-- 15-bit BGR555 format (5 bits per channel)
-- Values: 0-31 per channel
+The Palette Editor provides RGB color editing capabilities.
 
 ### Commands
 
-**Navigation:**
-- `n` - Next color in palette
-- `p` - Previous color in palette
-- `P` - Next palette
-- `O` - Previous palette
+- `p <pal>` - Select palette (0-15)
+- `c <color>` - Select color in palette (0-15)
+- `r <val>` - Set red component (0-31)
+- `g <val>` - Set green component (0-31)
+- `b <val>` - Set blue component (0-31)
+- `s <hex>` - Set full 15-bit color value
+- `d` - Display current palette
+- `w` - Write to CGRAM
+- `x` - Return to main menu
 
-**Editing:**
-- `r` - Set red value (0-31)
-- `g` - Set green value (0-31)
-- `b` - Set blue value (0-31)
-- `h` - Set hexadecimal value (0-7FFF)
+### Example Session
 
-**Operations:**
-- `s` - Save color to CGRAM
-- `v` - View all colors in current palette
-- `e` - Export palette to file
-- `i` - Import palette from file
-- `q` - Return to main menu
+```
+p 0          # Select palette 0
+c 1          # Select color 1
+r 31         # Max red
+g 0          # No green
+b 0          # No blue
+w            # Write to CGRAM
+d            # Display palette
+```
 
 ### Color Format
 
-BGR555 format: `0BBB BBGG GGGR RRRR`
-- Red: bits 0-4
-- Green: bits 5-9
-- Blue: bits 10-14
+SNES uses 15-bit RGB color format:
+- 5 bits each for Red, Green, and Blue
+- Range: 0-31 for each component
+- Format: `0bbbbbgggggrrrrr` (little-endian)
 
-Example: `$7FFF` = White (31, 31, 31)
+## Tilemap Editor
 
-### Example Workflow
-
-1. Launch Palette Editor
-2. Press `P` to select palette (default 0)
-3. Press `n` to navigate to color
-4. Press `r` and enter `31` for maximum red
-5. Press `g` and enter `15` for mid green
-6. Press `b` and enter `0` for no blue
-7. Press `s` to save color
-8. Press `v` to view entire palette
-9. Press `q` to exit
-
-## Script Editor
-
-The Script Editor provides batch ROM modification capabilities.
-
-### What is Scripting?
-Scripts are sequences of commands that modify ROM data:
-- SET: Change single byte
-- FILL: Fill range with value
-- COPY: Copy data between addresses
+The Tilemap Editor allows you to modify background layer tilemaps.
 
 ### Commands
 
-**Script Management:**
-- `c` - Enter new command
-- `l` - List all commands
-- `d` - Delete command by index
-- `x` - Clear all commands
+- `l <layer>` - Select BG layer (0-3)
+- `t <tile>` - Select tile to place
+- `p <palette>` - Select palette (0-7)
+- `m <x> <y>` - Move cursor to position
+- `s` - Place selected tile at cursor
+- `c` - Toggle paint mode
+- `v` - View tilemap at cursor area
+- `b` - Return to main menu
 
-**Execution:**
-- `e` - Execute current command
-- `r` - Run all commands
+### Example Session
 
-**File Operations:**
-- `s` - Save script to file
-- `o` - Load script from file
+```
+l 0          # Select BG1
+t 42         # Select tile 42
+p 2          # Use palette 2
+m 10 8       # Move cursor to (10, 8)
+s            # Place tile
+```
 
-**Help:**
-- `h` - Show syntax help
-- `q` - Return to main menu
+### Tilemap Format
 
-### Script Syntax
+SNES tilemaps are 32x32 tiles with 2-byte entries:
+- 10 bits: Tile number (0-1023)
+- 3 bits: Palette number (0-7)
+- 2 bits: Flip flags (horizontal/vertical)
+- 1 bit: Priority
+
+## Script Editor
+
+The Script Editor allows you to execute ROM modification scripts.
+
+### Commands
+
+- `f <file>` - Execute script from file
+- `e <cmd>` - Execute single command
+- `h` - Show scripting help
+- `b` - Return to main menu
+
+### Scripting Language
+
+The scripting language provides commands for ROM manipulation:
 
 #### SET Command
+Set a byte at a ROM address:
 ```
-SET <bank>:<addr> <value>
+SET address value
 ```
-Set a single byte at ROM address.
+Example: `SET 10000 FF`
 
-Example: `SET 00:8000 FF`
-- Sets byte at bank $00, offset $8000 to $FF
+#### SET16 Command
+Set a 16-bit word (little-endian):
+```
+SET16 address value
+```
+Example: `SET16 7FFC 8000`
 
 #### FILL Command
+Fill a memory region with a value:
 ```
-FILL <bank>:<addr> <value> <length>
+FILL address size value
 ```
-Fill a range with a value.
-
-Example: `FILL 00:8100 00 100`
-- Fills 256 bytes starting at $00:8100 with $00
+Example: `FILL 20000 100 00`
 
 #### COPY Command
+Copy data from one location to another:
 ```
-COPY <src_bank>:<src_addr> <dst_bank>:<dst_addr> <length>
+COPY source destination size
 ```
-Copy data between addresses.
+Example: `COPY 10000 20000 200`
 
-Example: `COPY 00:8000 01:9000 100`
-- Copies 256 bytes from $00:8000 to $01:9000
-
-### Script File Format
-
-Save scripts as text files:
+#### CHECKSUM Command
+Recalculate and update ROM checksum:
 ```
-# This is a comment
-# Comments start with #
-
-SET 00:8000 FF
-FILL 00:8100 00 100
-COPY 00:8000 01:9000 256
+CHECKSUM
 ```
 
-### Example Workflow
+#### Comments
+Lines starting with `;` or `#` are comments:
+```
+; This is a comment
+# This is also a comment
+```
 
-1. Launch Script Editor
-2. Press `c` to enter command
-3. Type: `SET 00:8000 FF`
-4. Press `c` again for another command
-5. Type: `FILL 00:8100 00 256`
-6. Press `r` to run all commands
-7. Press `s` to save script
-8. Enter filename: `mods.scr`
-9. Press `q` to exit
+### Example Script
 
-## Saving Your Work
+```
+; Modify ROM header
+SET 7FC0 54    ; T
+SET 7FC1 45    ; E
+SET 7FC2 53    ; S
+SET 7FC3 54    ; T
 
-### Save ROM
-To save all modifications:
-1. Return to main menu
-2. Select option 7 (Save ROM)
-3. Enter output filename (e.g., `modified.sfc`)
+; Fill area with pattern
+FILL 10000 1000 AA
 
-The saved ROM includes:
-- Modified tiles in ROM
-- Changed sprites in ROM
-- Updated tilemaps
-- Modified palettes
-- All script changes
+; Update checksum
+CHECKSUM
+```
 
-### Export Individual Assets
+### Running Scripts
 
-**Tiles:**
-- Use Tile Editor → Export (`x`)
-- Saves 16 bytes to file
-- Load with Import (`i`)
+From command line:
+1. Select option 5 (Script Editor)
+2. Type `f script.txt` to run a script file
+3. Or type `e SET 1000 FF` to run a single command
 
-**Palettes:**
-- Use Palette Editor → Export (`e`)
-- Saves 32 bytes to file
-- Load with Import (`i`)
+## Saving Changes
 
-**Scripts:**
-- Use Script Editor → Save (`s`)
-- Saves text file
-- Load with Load (`o`)
+To save your modifications:
 
-## Tips and Tricks
+1. Select option 7 from main menu
+2. Enter output filename (e.g., `modified.sfc`)
+3. ROM will be saved with updated checksum
 
-### General Tips
-1. **Save Often**: ROM modifications are not saved until you explicitly save
-2. **Use Scripts**: For repetitive tasks, scripts are much faster
-3. **Backup Original**: Always keep a copy of the original ROM
-4. **Track Changes**: The status bar shows if you have unsaved changes
+**Important**: Always create backups of original ROM files before editing!
 
-### Tile Editing
-- Start with simple shapes before complex graphics
-- Use different zoom levels to see details
-- Export tiles you like for reuse
-- Remember color 0 is usually transparent
+## Best Practices
 
-### Sprite Management
-- List all sprites (`l`) to see what's already in use
-- Standard positions: X=0-255, Y=0-239 (on screen)
-- Use negative Y values for sprites above screen
-- Priority controls which sprites appear in front
+1. **Backup First** - Always work on copies of ROMs
+2. **Test Changes** - Save and test modifications frequently
+3. **Use Scripts** - For complex changes, use scripts for repeatability
+4. **Document Changes** - Keep notes on what you modify
+5. **Checksum Updates** - Always run CHECKSUM after modifications
 
-### Tilemap Design
-- Plan your layout before placing tiles
-- Use paint mode for faster horizontal rows
-- Different layers can create parallax effects
-- Layer 1 usually has highest priority
+## Technical Details
 
-### Color Selection
-- View full palette to maintain consistency
-- RGB values 0-31 can be subtle differences
-- Export palettes to reuse in other projects
-- Test colors in actual game to see results
+### Memory Layout
 
-### Scripting
-- Write scripts in external editor for complex operations
-- Use comments to document what each command does
-- Test commands individually before running all
-- Scripts can automate tedious modifications
+- ROM data is directly editable
+- VRAM, CGRAM, and OAM are in-memory representations
+- Changes to VRAM/CGRAM/OAM need to be saved back to ROM
+- ROM addresses are raw file offsets, not SNES addresses
+
+### Limitations
+
+- Tile editor currently supports 2bpp format only
+- Tilemap editor uses simplified 32x32 addressing
+- No real-time preview of changes
+- Limited to editing existing ROM structure
+
+### Future Enhancements
+
+- Support for 4bpp and 8bpp tile formats
+- Visual tile/sprite preview
+- Undo/redo functionality
+- Import/export of graphics
+- Hot reload with emulator integration
 
 ## Troubleshooting
 
-### Common Issues
+**Problem**: Changes don't appear in saved ROM
+**Solution**: Make sure to save after editing and run CHECKSUM
 
-**Problem: Changes don't appear**
-- Solution: Make sure you saved (press `s`)
-- Solution: Check if you're editing the right tile/sprite number
-- Solution: Verify you saved the ROM (option 7)
+**Problem**: Can't find tiles/sprites
+**Solution**: Use ROM information viewer to understand ROM layout
 
-**Problem: Invalid address error**
-- Solution: Check address is within ROM size
-- Solution: Verify bank:offset format (hex values)
-- Solution: Ensure destination has enough space
+**Problem**: Script errors
+**Solution**: Check syntax - all numbers are hexadecimal
 
-**Problem: Colors look wrong**
-- Solution: Remember BGR format, not RGB
-- Solution: Check you saved to CGRAM (press `s`)
-- Solution: Verify palette number is correct
-
-**Problem: Sprites not visible**
-- Solution: Check Y position (must be < 240 for visibility)
-- Solution: Verify tile number exists in VRAM
-- Solution: Ensure sprite is within 128 sprite limit
-
-**Problem: Script command fails**
-- Solution: Check syntax with help (`h`)
-- Solution: Verify addresses are in hex
-- Solution: Ensure ROM has space for operation
-
-### Getting Help
-
-1. Use the `h` command in Script Editor for syntax
-2. Check the status message after operations
-3. Consult PHASE_5_COMPLETION.md for technical details
-4. Refer to SNES development documentation
-
-## Keyboard Reference
-
-### Quick Reference Card
-
-**Tile Editor:**
-```
-n/p    - Next/Previous tile
-g      - Go to tile
-e      - Edit pixel
-c      - Change palette
-z      - Zoom
-v      - View hex
-s      - Save
-x/i    - Export/Import
-q      - Quit
-```
-
-**Sprite Editor:**
-```
-n/p    - Next/Previous sprite
-g      - Go to sprite
-x/y    - Position
-t      - Tile number
-c      - Palette
-h/v    - Flip H/V
-s      - Save
-l      - List all
-q      - Quit
-```
-
-**Tilemap Editor:**
-```
-w/a/s/d - Move cursor
-p       - Place tile
-t       - Select tile
-c       - Palette
-l       - Layer
-m       - Paint mode
-v       - View area
-q       - Quit
-```
-
-**Palette Editor:**
-```
-n/p    - Next/Prev color
-P/O    - Next/Prev palette
-r/g/b  - Set RGB
-h      - Set hex
-s      - Save
-v      - View all
-e/i    - Export/Import
-q      - Quit
-```
-
-**Script Editor:**
-```
-c      - Enter command
-e      - Execute current
-r      - Run all
-l      - List
-d      - Delete
-x      - Clear all
-s/o    - Save/Load
-h      - Help
-q      - Quit
-```
+**Problem**: Corrupted ROM after editing
+**Solution**: Restore from backup and verify address ranges
 
 ## Examples
 
-### Example 1: Create a Simple Pattern
+### Example 1: Change Palette Colors
 
-**Objective:** Create a checkerboard pattern in tiles
+```
+# Select Game Maker
+# Choose Palette Editor (4)
+p 0          # Select palette 0
+c 0          # Background color
+s 0000       # Set to black
+w            # Write to CGRAM
+```
 
-1. Enter Tile Editor
-2. Go to tile 1
-3. Edit pixels to create a solid square (all color 3)
-4. Save tile
-5. Go to tile 2
-6. Leave empty (all color 0)
-7. Enter Tilemap Editor
-8. Select tile 1, place at (0,0)
-9. Select tile 2, place at (1,0)
-10. Repeat alternating pattern
-11. Save ROM
+### Example 2: Reposition Sprite
 
-### Example 2: Position Sprites for a Menu
+```
+# Choose Sprite Editor (2)
+n 5          # Select sprite 5
+x 120        # Move to center
+y 112        # Move to middle
+s            # Save
+```
 
-**Objective:** Create a sprite-based menu cursor
+### Example 3: Bulk ROM Patching
 
-1. Enter Sprite Editor
-2. Select sprite 0
-3. Set position (16, 80)
-4. Set tile to arrow tile number
-5. Set palette 7 (for highlighting)
-6. Save sprite
-7. Repeat for multiple menu items (Y+16 each)
-8. Save ROM
+Create a file `patch.txt`:
+```
+; Apply custom patch
+SET 1000 4C    ; JMP
+SET 1001 00    ; to
+SET 1002 90    ; $9000
+CHECKSUM
+```
 
-### Example 3: Batch Color Change
+Run it:
+```
+# Choose Script Editor (5)
+f patch.txt
+```
 
-**Objective:** Change all colors in a palette
+## Reference
 
-1. Enter Palette Editor
-2. Select palette 0
-3. Export current palette (backup)
-4. Edit each color (0-15)
-5. Save after each color
-6. View full palette to verify
-7. Save ROM
+### Memory Ranges
 
-### Example 4: ROM Data Modification
+- ROM: 0x000000 - (rom_size)
+- VRAM: 64KB (0x0000-0xFFFF)
+- CGRAM: 512 bytes (0x000-0x1FF)
+- OAM: 544 bytes (0x000-0x21F)
 
-**Objective:** Change title screen data
+### Color Values
 
-1. Enter Script Editor
-2. Add command: `SET 00:FFC0 48` (Change title byte)
-3. Add command: `SET 00:FFC1 45`
-4. Add command: `SET 00:FFC2 4C`
-5. Add command: `SET 00:FFC3 4C`
-6. Add command: `SET 00:FFC4 4F`
-7. Run all commands
-8. Save ROM
+Common SNES colors (15-bit format):
+- Black: 0x0000
+- White: 0x7FFF
+- Red: 0x001F
+- Green: 0x03E0
+- Blue: 0x7C00
 
-## Conclusion
+### Useful ROM Offsets
 
-The SNESE Game Maker provides powerful tools for ROM editing and modification. With practice, you can create custom graphics, layouts, and modifications to SNES ROMs.
+(These vary by ROM, check header):
+- LoROM header: 0x7FB0-0x7FDF
+- HiROM header: 0xFFB0-0xFFDF
+- Title: Header + 0x00 (21 bytes)
+- Checksum: Header + 0x1E (2 bytes)
 
-Remember:
-- Experiment and learn
-- Save backups frequently
-- Test changes in the emulator
-- Share your creations
+---
 
-Happy ROM hacking!
+For more information, see the main SNESE documentation and roadmap.
