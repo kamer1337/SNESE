@@ -19,6 +19,7 @@ typedef enum {
     GM_MODE_SPRITE_EDITOR,
     GM_MODE_TILEMAP_EDITOR,
     GM_MODE_PALETTE_EDITOR,
+    GM_MODE_SCRIPT_EDITOR,
     GM_MODE_ROM_INFO,
     GM_MODE_SCRIPT_EDITOR,
     GM_MODE_EXIT
@@ -62,6 +63,22 @@ typedef struct {
     bool modified;           /* Whether palette has been modified */
 } PaletteEditor;
 
+/* Script command structure */
+typedef struct {
+    char command[64];        /* Command string */
+    u32 address;             /* Target address */
+    u8 value;                /* Value to set */
+    u16 length;              /* Length for operations */
+} ScriptCommand;
+
+/* Script editor state */
+typedef struct {
+    ScriptCommand commands[256];  /* Script commands */
+    u16 num_commands;             /* Number of commands */
+    u16 current_command;          /* Current command index */
+    char script_buffer[4096];     /* Script text buffer */
+} ScriptEditor;
+
 /* Game Maker state */
 typedef struct {
     GameMakerMode mode;      /* Current mode */
@@ -73,6 +90,7 @@ typedef struct {
     SpriteEditor sprite_editor;
     TilemapEditor tilemap_editor;
     PaletteEditor palette_editor;
+    ScriptEditor script_editor;
     
     /* Scripting context */
     ScriptContext script_ctx;
@@ -217,6 +235,29 @@ int gamemaker_palette_import(GameMaker *gm, const char *filename);
 void gamemaker_script_editor(GameMaker *gm);
 
 /*
+ * Display script editor interface
+ */
+void gamemaker_script_editor_display(const GameMaker *gm);
+
+/*
+ * Parse and execute script command
+ */
+int gamemaker_script_execute_command(GameMaker *gm, const char *command);
+
+/*
+ * Load script from file
+ */
+int gamemaker_script_load(GameMaker *gm, const char *filename);
+
+/*
+ * Save script to file
+ */
+int gamemaker_script_save(const GameMaker *gm, const char *filename);
+
+/*
+ * Execute entire script
+ */
+int gamemaker_script_run(GameMaker *gm);
  * Execute script from file
  */
 int gamemaker_script_execute_file(GameMaker *gm, const char *filename);

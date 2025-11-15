@@ -37,7 +37,8 @@ This project follows a phased development approach. See [roadmap.md](roadmap.md)
 
 ## Current Status
 
-🚧 **In Active Development** - Phases 3 and 4 Complete!
+🎉 **Phase 5 Complete!** - Built-in Game Maker fully implemented  
+🔄 **Phase 6 In Progress** - Optimization, Testing, and Polish (60%)
 
 - ✅ Phase 1: Foundation and project structure - **Complete (100%)**
 - ✅ Phase 2: CPU emulation core - **Complete (100%)**
@@ -52,10 +53,18 @@ This project follows a phased development approach. See [roadmap.md](roadmap.md)
   - SPC-700 instruction set (50+ opcodes)
   - BRR audio sample decoding
   - DMA and HDMA transfer systems
-- 🔄 Phase 5: Game Maker - **In Progress (10%)**
-  - Basic interface and menu system
-  - Editor placeholders created
-- ⏳ Phase 6: Optimization and testing - **Upcoming**
+- ✅ Phase 5: Game Maker - **Complete (100%)**
+  - **Tile Editor**: Edit 8x8 tiles with pixel-level control
+  - **Sprite Editor**: Manage 128 sprites with full OAM access
+  - **Tilemap Editor**: Create background layouts on 4 layers
+  - **Palette Editor**: Modify colors with RGB/hex input
+  - **Script Editor**: Batch ROM modifications (SET/FILL/COPY)
+  - **Complete Documentation**: 13,000+ word user guide
+- 🔄 Phase 6: Optimization and testing - **In Progress (60%)**
+  - ✅ Comprehensive documentation complete
+  - ✅ Code quality validated
+  - ⏳ Automated testing in progress
+  - ⏳ Performance optimization ongoing
 
 ## Prerequisites
 
@@ -88,18 +97,65 @@ make
 ./snesemu <rom_file.sfc>
 ```
 
-### Game Maker Mode (Phase 5 - In Development)
+### Game Maker Mode
+
+The built-in Game Maker provides comprehensive ROM editing tools:
 
 ```bash
 ./snesemu --maker <rom_file.sfc>
 ```
 
-Access the built-in Game Maker for ROM editing:
-- Tile Editor: Edit tile graphics
-- Sprite Editor: Modify sprite properties
-- Tilemap Editor: Edit background layers
-- Palette Editor: Adjust color palettes
-- ROM Export: Save modified ROMs
+**Available Editors:**
+
+1. **Tile Editor**
+   - View and edit 8x8 pixel tiles (2bpp format)
+   - Pixel-by-pixel editing with color selection
+   - Palette switching and zoom controls
+   - Export/import tile data
+
+2. **Sprite Editor**
+   - Manage up to 128 sprites
+   - Position control (X, Y coordinates)
+   - Tile assignment and palette selection
+   - Horizontal/vertical flip controls
+   - Direct OAM (Object Attribute Memory) access
+
+3. **Tilemap Editor**
+   - Edit background layers (BG1-BG4)
+   - WASD cursor navigation
+   - Tile placement with paint mode
+   - View tilemap area around cursor
+   - Layer switching
+
+4. **Palette Editor**
+   - Edit 16 palettes of 16 colors each
+   - RGB value editing (0-31 per channel)
+   - Hexadecimal color input (BGR555 format)
+   - Full palette preview
+   - Export/import palette files
+
+5. **Script Editor**
+   - Batch ROM modifications
+   - Commands: SET (byte), FILL (range), COPY (data)
+   - Load/save script files
+   - Syntax help and documentation
+
+**Documentation:**
+- See [docs/GAME_MAKER_GUIDE.md](docs/GAME_MAKER_GUIDE.md) for complete usage instructions
+- See [docs/PHASE_5_COMPLETION.md](docs/PHASE_5_COMPLETION.md) for technical details
+
+### Display Options
+
+```bash
+# Display ROM information only
+./snesemu --info rom.sfc
+
+# Run with debug output
+./snesemu --debug rom.sfc
+
+# Show help
+./snesemu --help
+```
 
 ## Project Structure
 
