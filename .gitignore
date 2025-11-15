@@ -1,0 +1,41 @@
+# Build artifacts
+build/
+*.o
+*.a
+*.so
+*.dylib
+
+# Executables
+snesemu
+snesemu.exe
+
+# Debug files
+*.dSYM/
+*.su
+*.idb
+*.pdb
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Test ROMs (don't commit ROMs)
+*.sfc
+*.smc
+*.fig
+*.bin
+
+# Save files
+*.srm
+*.sav
+
+# Logs
+*.log
+
+# Temporary files
+/tmp/
+*.tmp
