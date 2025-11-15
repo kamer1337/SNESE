@@ -12,11 +12,13 @@
 #include "../include/memory.h"
 #include "../include/cpu.h"
 #include "../include/ppu.h"
+#include "../include/input.h"
 
 /* Global system components */
 Memory g_memory;
 CPU g_cpu;
 PPU g_ppu;
+InputSystem g_input;
 Cartridge g_cartridge;
 
 static void print_usage(const char *program_name) {
@@ -92,6 +94,10 @@ int main(int argc, char *argv[]) {
     
     cpu_init(&g_cpu);
     ppu_init(&g_ppu);
+    input_init(&g_input);
+    
+    /* Connect PPU to memory */
+    ppu_set_memory(&g_ppu, g_memory.vram, g_memory.cgram, g_memory.oam);
     
     printf("Emulator initialized\n\n");
     
