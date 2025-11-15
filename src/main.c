@@ -13,12 +13,14 @@
 #include "../include/cpu.h"
 #include "../include/ppu.h"
 #include "../include/input.h"
+#include "../include/apu.h"
 
 /* Global system components */
 Memory g_memory;
 CPU g_cpu;
 PPU g_ppu;
 InputSystem g_input;
+APU g_apu;
 Cartridge g_cartridge;
 
 static void print_usage(const char *program_name) {
@@ -95,11 +97,16 @@ int main(int argc, char *argv[]) {
     cpu_init(&g_cpu);
     ppu_init(&g_ppu);
     input_init(&g_input);
+    apu_init(&g_apu);
     
     /* Connect PPU to memory */
     ppu_set_memory(&g_ppu, g_memory.vram, g_memory.cgram, g_memory.oam);
     
-    printf("Emulator initialized\n\n");
+    printf("Emulator initialized\n");
+    printf("  CPU: 65c816 @ ~3.58 MHz\n");
+    printf("  PPU: Graphics subsystem ready\n");
+    printf("  APU: SPC-700 + DSP audio ready\n");
+    printf("  Input: Controller emulation ready\n\n");
     
     /* Print initial CPU state */
     if (debug_mode) {
@@ -130,6 +137,53 @@ int main(int argc, char *argv[]) {
         
         printf("\nCPU state after %d instructions:\n", i);
         cpu_print_state(&g_cpu);
+    } else {
+        /* Run emulation loop for a short test */
+        printf("\n=== Running Emulation Test ===\n");
+        printf("Executing 1 frame of emulation...\n\n");
+        
+        /* Run one frame worth of cycles */
+        /* NTSC: ~89342 cycles per frame at 3.58 MHz / 60 Hz */
+        u32 frame_cycles = 89342;
+        u32 cycles_executed = 0;
+        
+        while (cycles_executed < frame_cycles && !g_cpu.stopped) {
+            /* Execute CPU */
+            u32 cpu_cycles = cpu_step(&g_cpu);
+            cycles_executed += cpu_cycles;
+            
+            /* Execute PPU (proportional to CPU cycles) */
+            /* PPU runs at same speed, roughly 1 scanline per 1364 cycles */
+            if (cycles_executed % 1364 == 0) {
+                ppu_step_scanline(&g_ppu);
+                
+                /* Trigger NMI on VBlank */
+                if (g_ppu.vcount == 225) {
+                    cpu_nmi(&g_cpu);
+                    input_auto_read(&g_input);
+                }
+            }
+            
+            /* Execute APU (runs slower, ~1.024 MHz) */
+            /* Approximately 1 APU cycle per 3.5 CPU cycles */
+            apu_run(&g_apu, cpu_cycles / 3);
+        }
+        
+        printf("Frame emulation complete:\n");
+        printf("  CPU cycles: %u\n", cycles_executed);
+        printf("  PPU scanline: %u\n", g_ppu.vcount);
+        printf("  APU cycles: %lu\n", (unsigned long)g_apu.cpu.cycles);
+        
+        /* Render and output frame */
+        if (g_ppu.framebuffer) {
+            ppu_render_frame(&g_ppu);
+            ppu_output_ppm(&g_ppu, "output_frame.ppm");
+        }
+        
+        /* Output audio if any was generated */
+        if (g_apu.buffer_pos > 0) {
+            apu_output_wav(&g_apu, "output_audio.wav");
+        }
     }
     
     printf("\n=== Emulation Complete ===\n");
