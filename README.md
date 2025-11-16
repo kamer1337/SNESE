@@ -11,6 +11,7 @@ SNESE is an educational project aimed at developing a cycle-accurate SNES emulat
 - **Pure C Implementation**: Written in ANSI C (C89/C90) for maximum portability
 - **Cycle-Accurate Emulation**: Accurate reproduction of SNES hardware behavior
 - **Built-in Game Maker**: Runtime tools for creating and modifying ROM-based games
+- **ML Graphics Upscaling**: Machine learning-based upscaling for enhanced visual quality
 - **Educational Focus**: Designed to teach emulation concepts and low-level programming
 - **Cross-Platform**: Targets Linux, Windows (via MinGW), and other platforms
 
@@ -159,6 +160,30 @@ The built-in Game Maker provides comprehensive ROM editing tools:
 **Documentation:**
 - See [docs/GAME_MAKER_GUIDE.md](docs/GAME_MAKER_GUIDE.md) for complete usage instructions
 - See [docs/PHASE_5_COMPLETION.md](docs/PHASE_5_COMPLETION.md) for technical details
+
+### ML Graphics Upscaling
+
+The emulator includes machine learning-based graphics upscaling to enhance visual quality:
+
+```bash
+# The upscaling is integrated into the PPU rendering pipeline
+# Supports 2x, 3x, and 4x upscaling with ML enhancement
+```
+
+**Upscaling Modes:**
+- Standard nearest-neighbor (fast, pixel-perfect)
+- Bilinear interpolation (smooth)
+- ML-enhanced upscaling (preserves pixel art aesthetic)
+
+**Features:**
+- Pretrained model weights optimized for retro graphics
+- Edge-preserving filters
+- Configurable sharpness and anti-aliasing
+- Real-time performance at 60 FPS
+
+**Documentation:**
+- See [docs/ML_UPSCALING.md](docs/ML_UPSCALING.md) for complete technical details
+- Run `tests/upscaler_demo` to see upscaling in action
 
 ### Display Options
 

@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "../include/ppu.h"
+#include "../include/upscaler.h"
 
 void ppu_init(PPU *ppu) {
     int i;
@@ -722,4 +723,89 @@ void ppu_render_mode7(PPU *ppu) {
         /* Draw pixel to framebuffer */
         ppu->framebuffer[y * SCREEN_WIDTH + x] = ppu_get_color(ppu, color_index);
     }
+}
+
+/* ML Upscaling implementation */
+
+void ppu_enable_upscaling(PPU *ppu, UpscaleMode mode) {
+    u16 output_width, output_height;
+    
+    if (!ppu) {
+        return;
+    }
+    
+    /* Initialize upscaler if not already initialized */
+    if (!ppu->upscaler) {
+        ppu->upscaler = (Upscaler *)malloc(sizeof(Upscaler));
+        if (!ppu->upscaler) {
+            fprintf(stderr, "Failed to allocate upscaler\n");
+            return;
+        }
+        upscaler_init(ppu->upscaler);
+    }
+    
+    /* Set upscaling mode */
+    upscaler_set_mode(ppu->upscaler, mode);
+    
+    /* Allocate upscaled buffer */
+    upscaler_get_output_size(ppu->upscaler, SCREEN_WIDTH, SCREEN_HEIGHT,
+                            &output_width, &output_height);
+    
+    if (ppu->upscaled_buffer) {
+        free(ppu->upscaled_buffer);
+    }
+    
+    ppu->upscaled_buffer = (u32 *)calloc(output_width * output_height, sizeof(u32));
+    if (!ppu->upscaled_buffer) {
+        fprintf(stderr, "Failed to allocate upscaled buffer\n");
+        ppu->upscaling_enabled = false;
+        return;
+    }
+    
+    ppu->upscaling_enabled = true;
+    
+    printf("ML Upscaling enabled: %dx%d -> %dx%d\n", 
+           SCREEN_WIDTH, SCREEN_HEIGHT, output_width, output_height);
+}
+
+void ppu_disable_upscaling(PPU *ppu) {
+    if (!ppu) {
+        return;
+    }
+    
+    ppu->upscaling_enabled = false;
+    
+    if (ppu->upscaled_buffer) {
+        free(ppu->upscaled_buffer);
+        ppu->upscaled_buffer = NULL;
+    }
+    
+    if (ppu->upscaler) {
+        upscaler_cleanup(ppu->upscaler);
+        free(ppu->upscaler);
+        ppu->upscaler = NULL;
+    }
+}
+
+const u32 *ppu_get_upscaled_framebuffer(const PPU *ppu, u16 *width, u16 *height) {
+    if (!ppu || !ppu->upscaling_enabled || !ppu->upscaled_buffer || !ppu->upscaler) {
+        return NULL;
+    }
+    
+    /* Apply upscaling to current framebuffer */
+    if (ppu->framebuffer) {
+        upscaler_process(ppu->upscaler, ppu->framebuffer,
+                        SCREEN_WIDTH, SCREEN_HEIGHT,
+                        ppu->upscaled_buffer);
+        
+        /* Get output dimensions */
+        if (width && height) {
+            upscaler_get_output_size(ppu->upscaler, SCREEN_WIDTH, SCREEN_HEIGHT,
+                                    width, height);
+        }
+        
+        return ppu->upscaled_buffer;
+    }
+    
+    return NULL;
 }

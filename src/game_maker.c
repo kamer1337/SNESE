@@ -1492,3 +1492,4 @@ bool gamemaker_confirm(const char *message) {
 }
 
 
+}
