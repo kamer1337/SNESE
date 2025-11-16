@@ -241,9 +241,92 @@ void ppu_write_register(PPU *ppu, u16 address, u8 value) {
 }
 
 u8 ppu_read_register(PPU *ppu, u16 address) {
-    (void)address;  /* Unused for now */
-    (void)ppu;
-    return 0;  /* Placeholder */
+    if (!ppu) {
+        return 0;
+    }
+    
+    /* Most PPU registers are write-only, but some status registers are readable */
+    switch (address) {
+        case 0x2137:  /* SLHV - Software Latch for H/V Counter */
+            /* Latch H/V counters (no return value, write-only) */
+            return 0;
+            
+        case 0x2138:  /* OAMDATAREAD - OAM Data Read */
+            /* Read from OAM at current address */
+            if (ppu->oam && ppu->oam_addr < 544) {  /* 512 bytes main OAM + 32 bytes high table */
+                u8 value = ppu->oam[ppu->oam_addr];
+                ppu->oam_addr = (ppu->oam_addr + 1) & 0x1FF;
+                return value;
+            }
+            return 0;
+            
+        case 0x2139:  /* VMDATALREAD - VRAM Data Read (low byte) */
+            /* Read low byte of VRAM data */
+            if (ppu->vram && ppu->vram_addr * 2 + 1 < VRAM_SIZE) {
+                return ppu->vram[ppu->vram_addr * 2];
+            }
+            return 0;
+            
+        case 0x213A:  /* VMDATAHREAD - VRAM Data Read (high byte) */
+            /* Read high byte of VRAM data */
+            if (ppu->vram && ppu->vram_addr * 2 + 1 < VRAM_SIZE) {
+                u8 value = ppu->vram[ppu->vram_addr * 2 + 1];
+                /* Increment VRAM address after high byte read */
+                ppu->vram_addr += ppu->vram_increment;
+                return value;
+            }
+            return 0;
+            
+        case 0x213B:  /* CGDATAREAD - CGRAM Data Read */
+            /* Read from CGRAM at current address */
+            if (ppu->cgram && ppu->cgram_addr * 2 + 1 < CGRAM_SIZE) {
+                u8 value;
+                if (!ppu->cgram_latch) {
+                    /* Read low byte */
+                    value = ppu->cgram[ppu->cgram_addr * 2];
+                    ppu->cgram_latch = true;
+                } else {
+                    /* Read high byte */
+                    value = ppu->cgram[ppu->cgram_addr * 2 + 1];
+                    ppu->cgram_latch = false;
+                    ppu->cgram_addr = (ppu->cgram_addr + 1) & 0xFF;
+                }
+                return value;
+            }
+            return 0;
+            
+        case 0x213C:  /* OPHCT - Horizontal Scanline Location (low) */
+            /* Return low 8 bits of horizontal counter */
+            return ppu->hcount & 0xFF;
+            
+        case 0x213D:  /* OPVCT - Vertical Scanline Location (low) */
+            /* Return low 8 bits of vertical counter */
+            return ppu->vcount & 0xFF;
+            
+        case 0x213E:  /* STAT77 - PPU Status Flag and Version */
+            /* Bit 7: Time over flag, Bit 6: Range over flag */
+            /* Bits 4-0: PPU version (typically 1) */
+            return 0x01;  /* PPU version 1, no time/range over */
+            
+        case 0x213F:  /* STAT78 - PPU Status Flag and Version */
+            /* Bit 7: V-blank flag, Bit 6: H-blank flag */
+            /* Bit 5: PAL/NTSC flag (0=NTSC, 1=PAL) */
+            /* Bits 4-0: PPU version (typically 2) */
+            {
+                u8 status = 0x02;  /* PPU version 2, NTSC */
+                if (ppu->vblank) {
+                    status |= 0x80;  /* Set V-blank flag */
+                }
+                if (ppu->hblank) {
+                    status |= 0x40;  /* Set H-blank flag */
+                }
+                return status;
+            }
+            
+        default:
+            /* Most PPU registers are write-only */
+            return 0;
+    }
 }
 
 u32 ppu_get_color(const PPU *ppu, u8 palette_index) {
