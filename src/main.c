@@ -15,6 +15,7 @@
 #include "../include/input.h"
 #include "../include/apu.h"
 #include "../include/game_maker.h"
+#include "../include/gui.h"
 
 /* Global system components */
 Memory g_memory;
@@ -23,15 +24,19 @@ PPU g_ppu;
 InputSystem g_input;
 APU g_apu;
 Cartridge g_cartridge;
+GuiState g_gui;
 
 static void print_usage(const char *program_name) {
     printf("SNESE - SNES Emulator with Built-in Game Maker\n");
-    printf("Usage: %s [options] <rom_file.sfc>\n\n", program_name);
+    printf("Usage: %s [options] [rom_file.sfc]\n\n", program_name);
     printf("Options:\n");
     printf("  -h, --help       Show this help message\n");
     printf("  -i, --info       Display ROM information only\n");
     printf("  -d, --debug      Enable debug mode\n");
+    printf("  -g, --gui        Show ROM selection GUI (default if no ROM specified)\n");
     printf("  --maker          Launch game maker mode\n");
+    printf("\n");
+    printf("If no ROM file is specified, the ROM selection GUI will be shown.\n");
     printf("\n");
 }
 
@@ -50,6 +55,7 @@ int main(int argc, char *argv[]) {
     bool info_only = false;
     bool debug_mode = false;
     bool maker_mode = false;
+    bool show_gui = false;
     
     print_banner();
     
@@ -62,10 +68,30 @@ int main(int argc, char *argv[]) {
             info_only = true;
         } else if (strcmp(argv[i], "-d") == 0 || strcmp(argv[i], "--debug") == 0) {
             debug_mode = true;
+        } else if (strcmp(argv[i], "-g") == 0 || strcmp(argv[i], "--gui") == 0) {
+            show_gui = true;
         } else if (strcmp(argv[i], "--maker") == 0) {
             maker_mode = true;
         } else if (argv[i][0] != '-') {
             rom_filename = argv[i];
+        }
+    }
+    
+    /* Initialize GUI */
+    if (gui_init(&g_gui) != SUCCESS) {
+        fprintf(stderr, "Failed to initialize GUI\n");
+        return 1;
+    }
+    
+    /* Show GUI if no ROM file was provided or --gui flag is set */
+    if (!rom_filename || show_gui) {
+        printf("Scanning for ROM files...\n");
+        rom_filename = gui_show_rom_selector(&g_gui);
+        
+        if (!rom_filename) {
+            printf("No ROM selected. Exiting.\n");
+            gui_cleanup(&g_gui);
+            return 0;
         }
     }
     
@@ -80,6 +106,7 @@ int main(int argc, char *argv[]) {
     printf("Loading ROM: %s\n", rom_filename);
     if (cartridge_load(&g_cartridge, rom_filename) != SUCCESS) {
         fprintf(stderr, "Failed to load ROM file\n");
+        gui_cleanup(&g_gui);
         return 1;
     }
     
@@ -90,6 +117,7 @@ int main(int argc, char *argv[]) {
     if (info_only) {
         printf("Info-only mode: exiting\n");
         cartridge_unload(&g_cartridge);
+        gui_cleanup(&g_gui);
         return 0;
     }
     
@@ -107,6 +135,7 @@ int main(int argc, char *argv[]) {
         gamemaker_cleanup(&game_maker);
         
         cartridge_unload(&g_cartridge);
+        gui_cleanup(&g_gui);
         return 0;
     }
     
@@ -127,7 +156,14 @@ int main(int argc, char *argv[]) {
     printf("  CPU: 65c816 @ ~3.58 MHz\n");
     printf("  PPU: Graphics subsystem ready\n");
     printf("  APU: SPC-700 + DSP audio ready\n");
-    printf("  Input: Controller emulation ready\n\n");
+    printf("  Input: Controller emulation ready\n");
+    
+    /* Display settings */
+    printf("\nSettings:\n");
+    printf("  Volume: %d%%\n", g_gui.volume);
+    printf("  VSync: %s\n", g_gui.vsync ? "On" : "Off");
+    printf("  Scale Factor: %dx\n", g_gui.scale_factor);
+    printf("\n");
     
     /* Print initial CPU state */
     if (debug_mode) {
@@ -213,6 +249,7 @@ int main(int argc, char *argv[]) {
     
     /* Cleanup */
     cartridge_unload(&g_cartridge);
+    gui_cleanup(&g_gui);
     
     return 0;
 }
