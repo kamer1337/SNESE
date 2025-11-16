@@ -39,3 +39,9 @@ snesemu.exe
 # Temporary files
 /tmp/
 *.tmp
+
+# Test outputs
+*.ppm
+*.png
+tests/upscaler_demo
+tests/test_runner

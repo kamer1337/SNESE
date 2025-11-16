@@ -9,6 +9,7 @@
 #define PPU_H
 
 #include "types.h"
+#include "upscaler.h"
 
 /* Screen dimensions */
 #define SCREEN_WIDTH  256
@@ -110,6 +111,11 @@ typedef struct {
     /* Render flags */
     bool needs_render;    /* Frame needs rendering */
     u32 frame_count;      /* Frame counter */
+    
+    /* ML Upscaling */
+    Upscaler *upscaler;   /* ML upscaling context */
+    bool upscaling_enabled; /* Enable ML upscaling */
+    u32 *upscaled_buffer; /* Buffer for upscaled output */
 } PPU;
 
 /* Function declarations */
@@ -183,5 +189,21 @@ void ppu_render_sprites(PPU *ppu);
  * Render Mode 7 background
  */
 void ppu_render_mode7(PPU *ppu);
+
+/*
+ * Enable ML upscaling for rendered frames
+ */
+void ppu_enable_upscaling(PPU *ppu, UpscaleMode mode);
+
+/*
+ * Disable ML upscaling
+ */
+void ppu_disable_upscaling(PPU *ppu);
+
+/*
+ * Get upscaled framebuffer (if upscaling is enabled)
+ * Returns NULL if upscaling is disabled or not ready
+ */
+const u32 *ppu_get_upscaled_framebuffer(const PPU *ppu, u16 *width, u16 *height);
 
 #endif /* PPU_H */
