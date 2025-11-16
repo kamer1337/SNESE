@@ -62,9 +62,14 @@ typedef struct {
     bool modified;           /* Whether palette has been modified */
 } PaletteEditor;
 
+/* Script editor command (different from ScriptCommand in script.h) */
+typedef struct {
+    char command[256];       /* Command string as typed by user */
+} GameMakerScriptCommand;
+
 /* Script editor state */
 typedef struct {
-    ScriptCommand commands[256];  /* Script commands */
+    GameMakerScriptCommand commands[256];  /* Script commands */
     u16 num_commands;             /* Number of commands */
     u16 current_command;          /* Current command index */
     char script_buffer[4096];     /* Script text buffer */

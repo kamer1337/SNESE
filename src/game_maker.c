@@ -549,6 +549,35 @@ void gamemaker_tile_edit_pixel(GameMaker *gm, u8 x, u8 y, u8 color) {
         gm->mem->vram[addr + 1] |= bit_mask;
     } else {
         gm->mem->vram[addr + 1] &= ~bit_mask;
+    /* SNES tiles are stored in 2bpp, 4bpp, or 8bpp format
+     * For simplicity, we'll handle 2bpp (4 colors) here
+     * Each tile is 8x8 pixels, stored as bitplanes
+     */
+    u16 addr = gm->tile_editor.tile_addr;
+    
+    if (!gm->mem || addr + 16 > VRAM_SIZE) {
+        return;
+    }
+    
+    /* Calculate bit position */
+    u8 row_offset = y;
+    u8 bit_pos = 7 - x;
+    
+    /* For 2bpp: 2 bytes per row, low bit plane first */
+    u8 *low_plane = &gm->mem->vram[addr + row_offset * 2];
+    u8 *high_plane = &gm->mem->vram[addr + row_offset * 2 + 1];
+    
+    /* Set pixel bits */
+    if (color & 0x01) {
+        *low_plane |= (1 << bit_pos);
+    } else {
+        *low_plane &= ~(1 << bit_pos);
+    }
+    
+    if (color & 0x02) {
+        *high_plane |= (1 << bit_pos);
+    } else {
+        *high_plane &= ~(1 << bit_pos);
     }
     
     gm->tile_editor.modified = true;
@@ -1419,79 +1448,6 @@ int gamemaker_palette_import(GameMaker *gm, const char *filename) {
 }
 
 /* Script Editor implementation */
-
-void gamemaker_script_editor(GameMaker *gm) {
-    char input[256];
-    bool editing = true;
-    
-    printf("\n=== Script Editor ===\n");
-    printf("Execute ROM modification scripts\n\n");
-    
-    while (editing) {
-        printf("\nScript Editor:\n");
-        printf("  f <file>  - Execute script from file\n");
-        printf("  e <cmd>   - Execute single command\n");
-        printf("  h         - Show scripting help\n");
-        printf("  b         - Return to main menu\n");
-        printf("\nCommand: ");
-        fflush(stdout);
-        
-        if (!fgets(input, sizeof(input), stdin)) {
-            break;
-        }
-        
-        char cmd = input[0];
-        switch (cmd) {
-            case 'f': {
-                char filename[256];
-                if (sscanf(input + 1, " %255s", filename) == 1) {
-                    printf("Executing script: %s\n", filename);
-                    if (gamemaker_script_execute_file(gm, filename) == SUCCESS) {
-                        printf("Script executed successfully\n");
-                        gm->unsaved_changes = true;
-                    } else {
-                        const char *error = script_get_error(&gm->script_ctx);
-                        printf("Script error: %s\n", error ? error : "Unknown error");
-                    }
-                } else {
-                    printf("Usage: f <filename>\n");
-                }
-                break;
-            }
-            case 'e': {
-                /* Execute single command */
-                char *script_cmd = input + 1;
-                while (*script_cmd == ' ') script_cmd++;
-                
-                if (*script_cmd != '\0' && *script_cmd != '\n') {
-                    if (gamemaker_script_execute_string(gm, script_cmd) == SUCCESS) {
-                        printf("Command executed\n");
-                        gm->unsaved_changes = true;
-                    } else {
-                        const char *error = script_get_error(&gm->script_ctx);
-                        printf("Error: %s\n", error ? error : "Unknown error");
-                    }
-                } else {
-                    printf("Usage: e <command>\n");
-                }
-                break;
-            }
-            case 'h':
-                script_print_help();
-                break;
-            case 'b':
-                editing = false;
-                break;
-            default:
-                printf("Unknown command\n");
-                break;
-        }
-        
-        printf("\n");
-    }
-    
-    gm->mode = GM_MODE_MAIN_MENU;
-}
 
 int gamemaker_script_execute_file(GameMaker *gm, const char *filename) {
     return script_execute_file(&gm->script_ctx, filename);
