@@ -21,7 +21,6 @@ typedef enum {
     GM_MODE_PALETTE_EDITOR,
     GM_MODE_SCRIPT_EDITOR,
     GM_MODE_ROM_INFO,
-    GM_MODE_SCRIPT_EDITOR,
     GM_MODE_EXIT
 } GameMakerMode;
 
@@ -62,14 +61,6 @@ typedef struct {
     u16 color_value;         /* 15-bit RGB color value */
     bool modified;           /* Whether palette has been modified */
 } PaletteEditor;
-
-/* Script command structure */
-typedef struct {
-    char command[64];        /* Command string */
-    u32 address;             /* Target address */
-    u8 value;                /* Value to set */
-    u16 length;              /* Length for operations */
-} ScriptCommand;
 
 /* Script editor state */
 typedef struct {
@@ -258,6 +249,8 @@ int gamemaker_script_save(const GameMaker *gm, const char *filename);
  * Execute entire script
  */
 int gamemaker_script_run(GameMaker *gm);
+
+/*
  * Execute script from file
  */
 int gamemaker_script_execute_file(GameMaker *gm, const char *filename);
