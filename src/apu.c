@@ -204,13 +204,58 @@ void apu_generate_samples(APU *apu, u32 num_samples) {
         
         /* Mix all active voices */
         for (v = 0; v < DSP_NUM_VOICES; v++) {
-            if (apu->dsp.voices[v].enabled) {
-                /* Generate simple waveform (placeholder) */
-                /* Real implementation would decode BRR samples */
-                s16 sample = (s16)((v * 1000) % 4000 - 2000);  /* Placeholder */
+            DSPVoice *voice = &apu->dsp.voices[v];
+            
+            if (voice->enabled) {
+                s16 sample;
                 
-                sample_left += (sample * apu->dsp.voices[v].volume_left) >> 7;
-                sample_right += (sample * apu->dsp.voices[v].volume_right) >> 7;
+                /* Get sample from voice's sample buffer */
+                /* If we've used all samples in buffer, decode next BRR block */
+                if (voice->sample_offset >= 16) {
+                    /* Check if we have valid sample address */
+                    if (voice->sample_address < SPC_RAM_SIZE - 9) {
+                        /* Decode next BRR block (9 bytes: 1 header + 8 data) */
+                        u8 brr_block[9];
+                        static s16 old_samples[DSP_NUM_VOICES] = {0};
+                        static s16 older_samples[DSP_NUM_VOICES] = {0};
+                        
+                        /* Read BRR block from APU RAM */
+                        for (int j = 0; j < 9; j++) {
+                            brr_block[j] = apu->ram[voice->sample_address + j];
+                        }
+                        
+                        /* Decode BRR block into sample buffer */
+                        brr_decode_block(brr_block, voice->sample_buffer, 
+                                       &old_samples[v], &older_samples[v]);
+                        
+                        /* Check for end/loop flags in BRR header */
+                        if (brr_block[0] & 0x01) {  /* End flag */
+                            if (brr_block[0] & 0x02) {  /* Loop flag */
+                                voice->sample_address = voice->loop_address;
+                            } else {
+                                voice->enabled = false;  /* Stop voice */
+                            }
+                        } else {
+                            voice->sample_address += 9;  /* Move to next block */
+                        }
+                        
+                        voice->sample_offset = 0;
+                    } else {
+                        /* Invalid sample address, use silence */
+                        sample = 0;
+                        sample_left += (sample * voice->volume_left) >> 7;
+                        sample_right += (sample * voice->volume_right) >> 7;
+                        continue;
+                    }
+                }
+                
+                /* Get current sample from buffer */
+                sample = voice->sample_buffer[voice->sample_offset];
+                voice->sample_offset++;
+                
+                /* Apply volume and mix */
+                sample_left += (sample * voice->volume_left) >> 7;
+                sample_right += (sample * voice->volume_right) >> 7;
             }
         }
         
