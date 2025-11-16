@@ -85,13 +85,29 @@ cd SNESE
 # Build the project
 make
 
-# Run the emulator
+# Run the emulator with ROM selection GUI
+./snesemu
+
+# Or run with a specific ROM file
 ./snesemu rom.sfc
 ```
 
 ## Usage
 
-### Running the Emulator
+### ROM Selection GUI (New!)
+
+Simply run the emulator without arguments to launch the ROM selection interface:
+
+```bash
+./snesemu
+```
+
+The GUI will automatically scan the `roms/` directory and present a list of available ROM files.
+Use the number keys to select a ROM and press Enter.
+
+**Note:** Place your ROM files (.sfc or .smc) in the `roms/` directory before running.
+
+### Running the Emulator with a Specific ROM
 
 ```bash
 ./snesemu <rom_file.sfc>

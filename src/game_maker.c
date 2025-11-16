@@ -525,6 +525,30 @@ void gamemaker_tile_editor_display(const GameMaker *gm) {
 }
 
 void gamemaker_tile_edit_pixel(GameMaker *gm, u8 x, u8 y, u8 color) {
+    if (!gm->mem || x > 7 || y > 7 || color > 3) {
+        return;
+    }
+    
+    u16 addr = gm->tile_editor.tile_addr + y * 2;
+    
+    if (addr + 1 >= VRAM_SIZE) {
+        return;
+    }
+    
+    u8 bit_mask = 1 << (7 - x);
+    
+    /* Set or clear bit in plane 0 */
+    if (color & 1) {
+        gm->mem->vram[addr] |= bit_mask;
+    } else {
+        gm->mem->vram[addr] &= ~bit_mask;
+    }
+    
+    /* Set or clear bit in plane 1 */
+    if (color & 2) {
+        gm->mem->vram[addr + 1] |= bit_mask;
+    } else {
+        gm->mem->vram[addr + 1] &= ~bit_mask;
     /* SNES tiles are stored in 2bpp, 4bpp, or 8bpp format
      * For simplicity, we'll handle 2bpp (4 colors) here
      * Each tile is 8x8 pixels, stored as bitplanes
@@ -964,6 +988,7 @@ void gamemaker_sprite_update(GameMaker *gm) {
 
 void gamemaker_tilemap_editor(GameMaker *gm) {
     char input[256];
+    char choice;
     bool editing = true;
     
     printf("\n=== Tilemap Editor ===\n");
@@ -1466,347 +1491,4 @@ bool gamemaker_confirm(const char *message) {
     return false;
 }
 
-/* Script Editor implementation */
 
-void gamemaker_script_editor(GameMaker *gm) {
-    char input[256];
-    char choice;
-    bool editing = true;
-    
-    printf("\n=== Script Editor ===\n");
-    printf("Simple scripting language for ROM patching\n");
-    
-    while (editing) {
-        printf("\n");
-        gamemaker_script_editor_display(gm);
-        
-        printf("\nScript Editor Commands:\n");
-        printf("  [c] Enter command       [e] Execute current command\n");
-        printf("  [r] Run all commands    [l] List all commands\n");
-        printf("  [d] Delete command      [x] Clear all commands\n");
-        printf("  [s] Save script         [o] Load script\n");
-        printf("  [h] Help (show syntax)  [q] Return to main menu\n");
-        printf("\nCommand: ");
-        fflush(stdout);
-        
-        if (!fgets(input, sizeof(input), stdin)) {
-            break;
-        }
-        
-        choice = input[0];
-        
-        switch (choice) {
-            case 'c':
-            case 'C': {
-                printf("\nEnter script command:\n");
-                printf("  SET <bank>:<addr> <value>    - Set byte at address\n");
-                printf("  FILL <bank>:<addr> <value> <len> - Fill range\n");
-                printf("  COPY <src_bank>:<src> <dst_bank>:<dst> <len> - Copy data\n");
-                printf("\nCommand: ");
-                if (fgets(input, sizeof(input), stdin)) {
-                    if (gm->script_editor.num_commands < 256) {
-                        /* Store command for later execution */
-                        size_t len = strlen(input);
-                        if (len > 0 && input[len-1] == '\n') {
-                            input[len-1] = '\0';
-                        }
-                        strncpy(gm->script_editor.commands[gm->script_editor.num_commands].command,
-                               input, 63);
-                        gm->script_editor.num_commands++;
-                        gamemaker_set_status(gm, "Command added");
-                    } else {
-                        gamemaker_set_status(gm, "Command buffer full");
-                    }
-                }
-                break;
-            }
-                
-            case 'e':
-            case 'E': {
-                if (gm->script_editor.current_command < gm->script_editor.num_commands) {
-                    const char *cmd = gm->script_editor.commands[gm->script_editor.current_command].command;
-                    if (gamemaker_script_execute_command(gm, cmd) == SUCCESS) {
-                        gamemaker_set_status(gm, "Command executed");
-                    } else {
-                        gamemaker_set_status(gm, "Command failed");
-                    }
-                } else {
-                    gamemaker_set_status(gm, "No command selected");
-                }
-                break;
-            }
-                
-            case 'r':
-            case 'R':
-                if (gamemaker_script_run(gm) == SUCCESS) {
-                    snprintf(gm->status_message, sizeof(gm->status_message),
-                             "Executed %u commands", gm->script_editor.num_commands);
-                } else {
-                    gamemaker_set_status(gm, "Script execution failed");
-                }
-                break;
-                
-            case 'l':
-            case 'L':
-                printf("\n=== Script Commands ===\n");
-                for (u16 i = 0; i < gm->script_editor.num_commands; i++) {
-                    printf("%3u: %s\n", i, gm->script_editor.commands[i].command);
-                }
-                if (gm->script_editor.num_commands == 0) {
-                    printf("(No commands)\n");
-                }
-                printf("\nPress Enter to continue...");
-                getchar();
-                break;
-                
-            case 'd':
-            case 'D': {
-                u16 idx;
-                printf("Enter command index to delete: ");
-                if (scanf("%hu", &idx) == 1) {
-                    getchar();
-                    if (idx < gm->script_editor.num_commands) {
-                        /* Shift commands down */
-                        for (u16 i = idx; i < gm->script_editor.num_commands - 1; i++) {
-                            gm->script_editor.commands[i] = gm->script_editor.commands[i + 1];
-                        }
-                        gm->script_editor.num_commands--;
-                        gamemaker_set_status(gm, "Command deleted");
-                    } else {
-                        gamemaker_set_status(gm, "Invalid index");
-                    }
-                } else {
-                    getchar();
-                }
-                break;
-            }
-                
-            case 'x':
-            case 'X':
-                if (gamemaker_confirm("Clear all commands?")) {
-                    gm->script_editor.num_commands = 0;
-                    gm->script_editor.current_command = 0;
-                    gamemaker_set_status(gm, "Commands cleared");
-                }
-                break;
-                
-            case 's':
-            case 'S': {
-                char filename[256];
-                printf("Enter filename to save script: ");
-                if (fgets(filename, sizeof(filename), stdin)) {
-                    size_t len = strlen(filename);
-                    if (len > 0 && filename[len-1] == '\n') {
-                        filename[len-1] = '\0';
-                    }
-                    if (gamemaker_script_save(gm, filename) == SUCCESS) {
-                        gamemaker_set_status(gm, "Script saved");
-                    } else {
-                        gamemaker_set_status(gm, "Save failed");
-                    }
-                }
-                break;
-            }
-                
-            case 'o':
-            case 'O': {
-                char filename[256];
-                printf("Enter filename to load script: ");
-                if (fgets(filename, sizeof(filename), stdin)) {
-                    size_t len = strlen(filename);
-                    if (len > 0 && filename[len-1] == '\n') {
-                        filename[len-1] = '\0';
-                    }
-                    if (gamemaker_script_load(gm, filename) == SUCCESS) {
-                        gamemaker_set_status(gm, "Script loaded");
-                    } else {
-                        gamemaker_set_status(gm, "Load failed");
-                    }
-                }
-                break;
-            }
-                
-            case 'h':
-            case 'H':
-                printf("\n=== Script Syntax Help ===\n");
-                printf("\nCommands:\n");
-                printf("  SET <bank>:<addr> <value>\n");
-                printf("    - Set byte at ROM address\n");
-                printf("    - Example: SET 00:8000 FF\n");
-                printf("\n  FILL <bank>:<addr> <value> <length>\n");
-                printf("    - Fill range with value\n");
-                printf("    - Example: FILL 00:8000 00 100\n");
-                printf("\n  COPY <src_bank>:<src_addr> <dst_bank>:<dst_addr> <length>\n");
-                printf("    - Copy data between addresses\n");
-                printf("    - Example: COPY 00:8000 01:9000 256\n");
-                printf("\nAddresses are in hexadecimal (bank:offset format)\n");
-                printf("Values and lengths can be decimal or hex (prefix with 0x)\n");
-                printf("\nPress Enter to continue...");
-                getchar();
-                break;
-                
-            case 'q':
-            case 'Q':
-                editing = false;
-                break;
-                
-            default:
-                gamemaker_set_status(gm, "Unknown command");
-                break;
-        }
-    }
-    
-    gm->mode = GM_MODE_MAIN_MENU;
-}
-
-void gamemaker_script_editor_display(const GameMaker *gm) {
-    printf("\n╔═══════════════════════════════════════════╗\n");
-    printf("║          Script Editor                    ║\n");
-    printf("╚═══════════════════════════════════════════╝\n");
-    
-    printf("\nCommands: %u/256\n", gm->script_editor.num_commands);
-    printf("Current: %u\n", gm->script_editor.current_command);
-    
-    if (gm->script_editor.num_commands > 0) {
-        printf("\nRecent commands:\n");
-        u16 start = gm->script_editor.num_commands > 5 ? 
-                    gm->script_editor.num_commands - 5 : 0;
-        for (u16 i = start; i < gm->script_editor.num_commands; i++) {
-            printf("  %3u: %s\n", i, gm->script_editor.commands[i].command);
-        }
-    }
-    
-    printf("\nStatus: %s\n", gm->status_message);
-}
-
-int gamemaker_script_execute_command(GameMaker *gm, const char *command) {
-    char cmd[16];
-    u8 bank, dst_bank, src_bank;
-    u16 addr, dst_addr, src_addr;
-    u8 value;
-    u16 length;
-    
-    if (!gm->cart || !command) {
-        return ERROR;
-    }
-    
-    /* Parse command */
-    if (sscanf(command, "%15s", cmd) != 1) {
-        return ERROR;
-    }
-    
-    /* SET command: SET bank:addr value */
-    if (strcmp(cmd, "SET") == 0) {
-        if (sscanf(command, "SET %hhx:%hx %hhx", &bank, &addr, &value) == 3) {
-            u32 rom_addr = (bank * 0x10000) + addr;
-            if (rom_addr < gm->cart->rom_size) {
-                gm->cart->rom_data[rom_addr] = value;
-                gm->unsaved_changes = true;
-                return SUCCESS;
-            }
-        }
-    }
-    /* FILL command: FILL bank:addr value length */
-    else if (strcmp(cmd, "FILL") == 0) {
-        if (sscanf(command, "FILL %hhx:%hx %hhx %hu", &bank, &addr, &value, &length) == 4) {
-            u32 rom_addr = (bank * 0x10000) + addr;
-            if (rom_addr + length <= gm->cart->rom_size) {
-                memset(&gm->cart->rom_data[rom_addr], value, length);
-                gm->unsaved_changes = true;
-                return SUCCESS;
-            }
-        }
-    }
-    /* COPY command: COPY src_bank:src_addr dst_bank:dst_addr length */
-    else if (strcmp(cmd, "COPY") == 0) {
-        if (sscanf(command, "COPY %hhx:%hx %hhx:%hx %hu", 
-                  &src_bank, &src_addr, &dst_bank, &dst_addr, &length) == 5) {
-            u32 src_rom = (src_bank * 0x10000) + src_addr;
-            u32 dst_rom = (dst_bank * 0x10000) + dst_addr;
-            if (src_rom + length <= gm->cart->rom_size && 
-                dst_rom + length <= gm->cart->rom_size) {
-                memmove(&gm->cart->rom_data[dst_rom], &gm->cart->rom_data[src_rom], length);
-                gm->unsaved_changes = true;
-                return SUCCESS;
-            }
-        }
-    }
-    
-    return ERROR;
-}
-
-int gamemaker_script_load(GameMaker *gm, const char *filename) {
-    FILE *file;
-    char line[256];
-    
-    if (!filename) {
-        return ERROR;
-    }
-    
-    file = fopen(filename, "r");
-    if (!file) {
-        return ERROR;
-    }
-    
-    /* Clear existing commands */
-    gm->script_editor.num_commands = 0;
-    
-    /* Read commands from file */
-    while (fgets(line, sizeof(line), file) && gm->script_editor.num_commands < 256) {
-        size_t len = strlen(line);
-        if (len > 0 && line[len-1] == '\n') {
-            line[len-1] = '\0';
-        }
-        
-        /* Skip empty lines and comments */
-        if (len == 0 || line[0] == '#' || line[0] == '\n') {
-            continue;
-        }
-        
-        strncpy(gm->script_editor.commands[gm->script_editor.num_commands].command,
-               line, 63);
-        gm->script_editor.num_commands++;
-    }
-    
-    fclose(file);
-    return SUCCESS;
-}
-
-int gamemaker_script_save(const GameMaker *gm, const char *filename) {
-    FILE *file;
-    
-    if (!filename) {
-        return ERROR;
-    }
-    
-    file = fopen(filename, "w");
-    if (!file) {
-        return ERROR;
-    }
-    
-    /* Write header comment */
-    fprintf(file, "# SNESE Game Maker Script\n");
-    fprintf(file, "# Auto-generated script file\n\n");
-    
-    /* Write all commands */
-    for (u16 i = 0; i < gm->script_editor.num_commands; i++) {
-        fprintf(file, "%s\n", gm->script_editor.commands[i].command);
-    }
-    
-    fclose(file);
-    return SUCCESS;
-}
-
-int gamemaker_script_run(GameMaker *gm) {
-    int errors = 0;
-    
-    for (u16 i = 0; i < gm->script_editor.num_commands; i++) {
-        gm->script_editor.current_command = i;
-        if (gamemaker_script_execute_command(gm, gm->script_editor.commands[i].command) != SUCCESS) {
-            errors++;
-            printf("Error executing command %u: %s\n", i, gm->script_editor.commands[i].command);
-        }
-    }
-    
-    return errors == 0 ? SUCCESS : ERROR;
-}
