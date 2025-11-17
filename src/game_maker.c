@@ -549,35 +549,6 @@ void gamemaker_tile_edit_pixel(GameMaker *gm, u8 x, u8 y, u8 color) {
         gm->mem->vram[addr + 1] |= bit_mask;
     } else {
         gm->mem->vram[addr + 1] &= ~bit_mask;
-    /* SNES tiles are stored in 2bpp, 4bpp, or 8bpp format
-     * For simplicity, we'll handle 2bpp (4 colors) here
-     * Each tile is 8x8 pixels, stored as bitplanes
-     */
-    u16 addr = gm->tile_editor.tile_addr;
-    
-    if (!gm->mem || addr + 16 > VRAM_SIZE) {
-        return;
-    }
-    
-    /* Calculate bit position */
-    u8 row_offset = y;
-    u8 bit_pos = 7 - x;
-    
-    /* For 2bpp: 2 bytes per row, low bit plane first */
-    u8 *low_plane = &gm->mem->vram[addr + row_offset * 2];
-    u8 *high_plane = &gm->mem->vram[addr + row_offset * 2 + 1];
-    
-    /* Set pixel bits */
-    if (color & 0x01) {
-        *low_plane |= (1 << bit_pos);
-    } else {
-        *low_plane &= ~(1 << bit_pos);
-    }
-    
-    if (color & 0x02) {
-        *high_plane |= (1 << bit_pos);
-    } else {
-        *high_plane &= ~(1 << bit_pos);
     }
     
     gm->tile_editor.modified = true;
@@ -1449,6 +1420,117 @@ int gamemaker_palette_import(GameMaker *gm, const char *filename) {
 
 /* Script Editor implementation */
 
+void gamemaker_script_editor(GameMaker *gm) {
+    char input[1024];
+    bool editing = true;
+    
+    printf("\n=== Script Editor ===\n");
+    printf("Execute ROM modification scripts\n\n");
+    
+    while (editing) {
+        gamemaker_script_editor_display(gm);
+        
+        printf("\nCommands:\n");
+        printf("  f <file>  - Execute script from file\n");
+        printf("  e <cmd>   - Execute single command\n");
+        printf("  h         - Show scripting help\n");
+        printf("  b         - Back to main menu\n");
+        printf("\nChoice: ");
+        fflush(stdout);
+        
+        if (!fgets(input, sizeof(input), stdin)) {
+            break;
+        }
+        
+        /* Parse command */
+        char cmd = input[0];
+        
+        switch (cmd) {
+            case 'f':
+            case 'F': {
+                /* Execute script from file */
+                char filename[256];
+                if (sscanf(input, "%*c %255s", filename) == 1) {
+                    printf("\nExecuting script from: %s\n", filename);
+                    int result = gamemaker_script_execute_file(gm, filename);
+                    if (result == SUCCESS) {
+                        gamemaker_set_status(gm, "Script executed successfully");
+                        gm->unsaved_changes = true;
+                    } else {
+                        gamemaker_set_status(gm, "Script execution failed");
+                    }
+                } else {
+                    gamemaker_set_status(gm, "Error: Invalid filename");
+                }
+                break;
+            }
+            
+            case 'e':
+            case 'E': {
+                /* Execute single command */
+                char *cmd_str = input + 2;  /* Skip 'e ' */
+                if (strlen(cmd_str) > 0) {
+                    printf("\nExecuting: %s", cmd_str);
+                    int result = gamemaker_script_execute_string(gm, cmd_str);
+                    if (result == SUCCESS) {
+                        gamemaker_set_status(gm, "Command executed successfully");
+                        gm->unsaved_changes = true;
+                    } else {
+                        gamemaker_set_status(gm, "Command execution failed");
+                    }
+                } else {
+                    gamemaker_set_status(gm, "Error: No command provided");
+                }
+                break;
+            }
+            
+            case 'h':
+            case 'H': {
+                /* Show scripting help */
+                printf("\n=== Scripting Help ===\n\n");
+                printf("Available Commands:\n");
+                printf("  SET <addr> <value>       - Set byte at address\n");
+                printf("  SET16 <addr> <value>     - Set 16-bit word at address\n");
+                printf("  FILL <start> <end> <val> - Fill range with value\n");
+                printf("  COPY <src> <dst> <len>   - Copy data from src to dst\n");
+                printf("  # <comment>              - Comment line (ignored)\n");
+                printf("  LABEL: <name>            - Define label\n");
+                printf("\nAddress format: hexadecimal (e.g., 0x8000)\n");
+                printf("Value format: decimal or hex (0xFF)\n");
+                printf("\nExample:\n");
+                printf("  SET 0x8000 0x60     # Write RTS instruction\n");
+                printf("  FILL 0x8001 0x8010 0x00  # Zero out 16 bytes\n");
+                printf("\nPress Enter to continue...");
+                fflush(stdout);
+                getchar();
+                break;
+            }
+            
+            case 'b':
+            case 'B':
+                editing = false;
+                break;
+                
+            default:
+                gamemaker_set_status(gm, "Unknown command");
+                break;
+        }
+    }
+    
+    gm->mode = GM_MODE_MAIN_MENU;
+}
+
+void gamemaker_script_editor_display(const GameMaker *gm) {
+    printf("\n╔═══════════════════════════════════════════╗\n");
+    printf("║            Script Editor                  ║\n");
+    printf("╚═══════════════════════════════════════════╝\n");
+    
+    printf("\nROM: %s\n", gm->cart ? "(loaded)" : "(none)");
+    printf("Modified: %s\n", gm->unsaved_changes ? "Yes" : "No");
+    
+    printf("\nStatus: %s\n", gm->status_message);
+}
+
 int gamemaker_script_execute_file(GameMaker *gm, const char *filename) {
     return script_execute_file(&gm->script_ctx, filename);
 }
@@ -1489,7 +1571,4 @@ bool gamemaker_confirm(const char *message) {
     }
     
     return false;
-}
-
-
 }
