@@ -1,10 +1,34 @@
 # Makefile for SNESE - SNES Emulator with Built-in Game Maker
+# Compatible with GCC 15.2+ on Windows 11 x64 and Linux
 
 # Compiler settings
-CC = gcc
-CFLAGS = -Wall -Wextra -std=c99 -pedantic -Iinclude
+CC ?= gcc
+CFLAGS = -Wall -Wextra -std=c99 -Iinclude
+
+# Platform detection
+ifeq ($(OS),Windows_NT)
+    # Windows-specific settings
+    PLATFORM = windows
+    TARGET_EXT = .exe
+    RM = del /Q
+    RMDIR = rmdir /S /Q
+    MKDIR = mkdir
+    PATHSEP = \\
+    # Disable pedantic on Windows to avoid POSIX warnings
+    CFLAGS += -D_WIN32 -DWIN32
+else
+    # Linux/Unix settings
+    PLATFORM = linux
+    TARGET_EXT =
+    RM = rm -f
+    RMDIR = rm -rf
+    MKDIR = mkdir -p
+    PATHSEP = /
+    CFLAGS += -pedantic
+endif
+
 LDFLAGS = 
-LIBS = 
+LIBS = -lm
 
 # Directories
 SRC_DIR = src
@@ -13,7 +37,7 @@ BUILD_DIR = build
 BIN_DIR = .
 
 # Target executable
-TARGET = $(BIN_DIR)/snesemu
+TARGET = $(BIN_DIR)/snesemu$(TARGET_EXT)
 
 # Source files
 SOURCES = $(wildcard $(SRC_DIR)/*.c)
@@ -28,12 +52,16 @@ else
     CFLAGS += -O2
 endif
 
-# Default target
+# Default target - builds only the emulator (tests excluded by default)
 all: $(TARGET)
 
 # Create build directory
 $(BUILD_DIR):
-	mkdir -p $(BUILD_DIR)
+ifeq ($(PLATFORM),windows)
+	@if not exist $(BUILD_DIR) $(MKDIR) $(BUILD_DIR)
+else
+	$(MKDIR) $(BUILD_DIR)
+endif
 
 # Link object files to create executable
 $(TARGET): $(BUILD_DIR) $(OBJECTS)
@@ -49,21 +77,34 @@ $(BUILD_DIR)/%.o: $(SRC_DIR)/%.c $(HEADERS)
 # Clean build artifacts
 clean:
 	@echo "Cleaning build artifacts..."
-	rm -rf $(BUILD_DIR)
-	rm -f $(TARGET)
+ifeq ($(PLATFORM),windows)
+	@if exist $(BUILD_DIR) $(RMDIR) $(BUILD_DIR)
+	@if exist $(TARGET) $(RM) $(TARGET)
+else
+	$(RMDIR) $(BUILD_DIR)
+	$(RM) $(TARGET)
+endif
 	@echo "Clean complete"
 
-# Install (optional - copies to /usr/local/bin)
+# Install (optional - copies to /usr/local/bin) - Linux only
 install: $(TARGET)
+ifeq ($(PLATFORM),windows)
+	@echo "Install target not supported on Windows"
+else
 	@echo "Installing $(TARGET) to /usr/local/bin..."
 	install -m 755 $(TARGET) /usr/local/bin/
 	@echo "Installation complete"
+endif
 
-# Uninstall
+# Uninstall - Linux only
 uninstall:
+ifeq ($(PLATFORM),windows)
+	@echo "Uninstall target not supported on Windows"
+else
 	@echo "Uninstalling..."
 	rm -f /usr/local/bin/snesemu
 	@echo "Uninstall complete"
+endif
 
 # Run with debug flags
 debug: DEBUG=1
@@ -73,9 +114,11 @@ debug: clean all
 info:
 	@echo "SNESE Build Information"
 	@echo "======================="
+	@echo "Platform: $(PLATFORM)"
 	@echo "CC:       $(CC)"
 	@echo "CFLAGS:   $(CFLAGS)"
 	@echo "LDFLAGS:  $(LDFLAGS)"
+	@echo "LIBS:     $(LIBS)"
 	@echo "SOURCES:  $(SOURCES)"
 	@echo "OBJECTS:  $(OBJECTS)"
 	@echo "TARGET:   $(TARGET)"
@@ -83,12 +126,12 @@ info:
 # Help target
 help:
 	@echo "SNESE Makefile targets:"
-	@echo "  all      - Build the emulator (default)"
+	@echo "  all      - Build the emulator (default, tests excluded)"
 	@echo "  clean    - Remove build artifacts"
 	@echo "  debug    - Build with debug symbols"
-	@echo "  test     - Run test suite"
-	@echo "  install  - Install to /usr/local/bin"
-	@echo "  uninstall- Remove from /usr/local/bin"
+	@echo "  test     - Build and run test suite (optional)"
+	@echo "  install  - Install to /usr/local/bin (Linux only)"
+	@echo "  uninstall- Remove from /usr/local/bin (Linux only)"
 	@echo "  info     - Display build configuration"
 	@echo "  help     - Display this help message"
 	@echo ""
@@ -99,16 +142,24 @@ help:
 	@echo "  make              # Build release version"
 	@echo "  make DEBUG=1      # Build debug version"
 	@echo "  make clean all    # Clean rebuild"
-	@echo "  make test         # Run tests"
+	@echo "  make test         # Build and run tests (optional)"
 
 # Phony targets
-.PHONY: all clean install uninstall debug info help test
+.PHONY: all clean install uninstall debug info help test test-clean
 
-# Test target
+# Test target - only builds tests when explicitly requested
 test:
-	@echo "Running test suite..."
+	@echo "Building and running test suite..."
+ifeq ($(PLATFORM),windows)
 	@cd tests && $(MAKE) test
+else
+	@cd tests && $(MAKE) test
+endif
 
 # Clean tests
 test-clean:
+ifeq ($(PLATFORM),windows)
 	@cd tests && $(MAKE) clean
+else
+	@cd tests && $(MAKE) clean
+endif

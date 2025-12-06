@@ -447,8 +447,91 @@ void upscaler_ml_process(Upscaler *upscaler, const u32 *input,
 
 void upscaler_edge_preserving(const u32 *input, u16 input_width, u16 input_height,
                               u32 *output, u16 output_width, u16 output_height) {
-    /* This is a placeholder for edge-preserving upscaling */
-    /* For now, use bilinear as a fallback */
-    upscaler_bilinear(input, input_width, input_height,
-                     output, output_width, output_height);
+    u16 out_x, out_y;
+    u16 in_x, in_y;
+    u8 scale_x, scale_y;
+    
+    if (!input || !output || input_width == 0 || input_height == 0) {
+        return;
+    }
+    
+    scale_x = (u8)(output_width / input_width);
+    scale_y = (u8)(output_height / input_height);
+    
+    if (scale_x == 0) scale_x = 1;
+    if (scale_y == 0) scale_y = 1;
+    
+    /* Process each output pixel */
+    for (out_y = 0; out_y < output_height; out_y++) {
+        for (out_x = 0; out_x < output_width; out_x++) {
+            /* Map to input coordinates */
+            in_x = out_x / scale_x;
+            in_y = out_y / scale_y;
+            
+            if (in_x >= input_width) in_x = input_width - 1;
+            if (in_y >= input_height) in_y = input_height - 1;
+            
+            /* Get the center pixel */
+            u32 center = input[in_y * input_width + in_x];
+            
+            /* Get neighboring pixels for edge detection */
+            u32 left = (in_x > 0) ? input[in_y * input_width + (in_x - 1)] : center;
+            u32 right = (in_x < input_width - 1) ? input[in_y * input_width + (in_x + 1)] : center;
+            u32 up = (in_y > 0) ? input[(in_y - 1) * input_width + in_x] : center;
+            u32 down = (in_y < input_height - 1) ? input[(in_y + 1) * input_width + in_x] : center;
+            
+            /* Calculate sub-pixel position within the scaled pixel */
+            u8 sub_x = out_x % scale_x;
+            u8 sub_y = out_y % scale_y;
+            float fx = (float)sub_x / scale_x;
+            float fy = (float)sub_y / scale_y;
+            
+            /* Edge detection: check if center differs significantly from neighbors */
+            bool h_edge = (left != center && right != center) || (left != right);
+            bool v_edge = (up != center && down != center) || (up != down);
+            
+            u32 result;
+            
+            if (!h_edge && !v_edge) {
+                /* No edge detected: use nearest neighbor for sharp pixels */
+                result = center;
+            } else if (h_edge && !v_edge) {
+                /* Horizontal edge: blend horizontally based on position */
+                u32 blend_pixel = (fx < 0.5f) ? left : right;
+                if (blend_pixel == center) {
+                    result = center;
+                } else {
+                    /* Blend between center and edge pixel */
+                    float blend = (fx < 0.5f) ? (0.5f - fx) * 2.0f : (fx - 0.5f) * 2.0f;
+                    blend *= 0.3f;  /* Reduce blend amount to preserve sharpness */
+                    
+                    u8 r = (u8)((center & 0xFF) * (1.0f - blend) + (blend_pixel & 0xFF) * blend);
+                    u8 g = (u8)(((center >> 8) & 0xFF) * (1.0f - blend) + ((blend_pixel >> 8) & 0xFF) * blend);
+                    u8 b = (u8)(((center >> 16) & 0xFF) * (1.0f - blend) + ((blend_pixel >> 16) & 0xFF) * blend);
+                    u8 a = (center >> 24) & 0xFF;
+                    result = ((u32)a << 24) | ((u32)b << 16) | ((u32)g << 8) | r;
+                }
+            } else if (!h_edge && v_edge) {
+                /* Vertical edge: blend vertically based on position */
+                u32 blend_pixel = (fy < 0.5f) ? up : down;
+                if (blend_pixel == center) {
+                    result = center;
+                } else {
+                    float blend = (fy < 0.5f) ? (0.5f - fy) * 2.0f : (fy - 0.5f) * 2.0f;
+                    blend *= 0.3f;
+                    
+                    u8 r = (u8)((center & 0xFF) * (1.0f - blend) + (blend_pixel & 0xFF) * blend);
+                    u8 g = (u8)(((center >> 8) & 0xFF) * (1.0f - blend) + ((blend_pixel >> 8) & 0xFF) * blend);
+                    u8 b = (u8)(((center >> 16) & 0xFF) * (1.0f - blend) + ((blend_pixel >> 16) & 0xFF) * blend);
+                    u8 a = (center >> 24) & 0xFF;
+                    result = ((u32)a << 24) | ((u32)b << 16) | ((u32)g << 8) | r;
+                }
+            } else {
+                /* Corner/diagonal edge: use nearest neighbor to preserve sharpness */
+                result = center;
+            }
+            
+            output[out_y * output_width + out_x] = result;
+        }
+    }
 }
