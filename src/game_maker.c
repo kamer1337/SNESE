@@ -959,7 +959,6 @@ void gamemaker_sprite_update(GameMaker *gm) {
 
 void gamemaker_tilemap_editor(GameMaker *gm) {
     char input[256];
-    char choice;
     bool editing = true;
     
     printf("\n=== Tilemap Editor ===\n");

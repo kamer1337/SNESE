@@ -1,16 +1,65 @@
 /*
  * script.c - Simple scripting layer implementation
+ * Compatible with GCC 15.2+ on Windows 11 x64 and Linux
  */
 
-#define _POSIX_C_SOURCE 200809L
+/* Enable POSIX functions on Linux (must be before any includes) */
+#ifndef _WIN32
+    #ifndef _POSIX_C_SOURCE
+        #define _POSIX_C_SOURCE 200809L
+    #endif
+#endif
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
-#include <strings.h>
 #include "../include/script.h"
 #include "../include/cartridge.h"
+
+/* Platform-specific string functions */
+#ifdef _WIN32
+    #define strcasecmp _stricmp
+    
+    /* Windows implementation of strdup */
+    static char *strdup_impl(const char *s) {
+        size_t len = strlen(s) + 1;
+        char *copy = (char *)malloc(len);
+        if (copy) {
+            memcpy(copy, s, len);
+        }
+        return copy;
+    }
+    #define strdup strdup_impl
+    
+    /* Windows implementation of strtok_r */
+    static char *strtok_r_impl(char *str, const char *delim, char **saveptr) {
+        char *token;
+        if (str == NULL) {
+            str = *saveptr;
+        }
+        /* Skip leading delimiters */
+        str += strspn(str, delim);
+        if (*str == '\0') {
+            *saveptr = str;
+            return NULL;
+        }
+        /* Find end of token */
+        token = str;
+        str = strpbrk(token, delim);
+        if (str == NULL) {
+            *saveptr = token + strlen(token);
+        } else {
+            *str = '\0';
+            *saveptr = str + 1;
+        }
+        return token;
+    }
+    #define strtok_r strtok_r_impl
+#else
+    /* POSIX systems have strings.h and native strtok_r/strdup */
+    #include <strings.h>
+#endif
 
 /* Helper to trim whitespace */
 static char *trim(char *str) {
@@ -216,6 +265,7 @@ int script_execute(ScriptContext *ctx, const ScriptCommand *cmd) {
             /* Store label for later GOTO */
             if (ctx->label_count < 32) {
                 strncpy(ctx->labels[ctx->label_count].name, cmd->label, 63);
+                ctx->labels[ctx->label_count].name[63] = '\0';
                 ctx->labels[ctx->label_count].line = ctx->line_number;
                 ctx->label_count++;
             }

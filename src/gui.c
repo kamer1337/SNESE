@@ -2,14 +2,27 @@
  * gui.c - Minimalistic GUI implementation
  * 
  * Simple console-based GUI for ROM selection and settings
+ * Compatible with GCC 15.2+ on Windows 11 x64 and Linux
  */
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <dirent.h>
 #include <sys/stat.h>
 #include "../include/gui.h"
+
+/* Platform-specific directory handling */
+#ifdef _WIN32
+    #include <windows.h>
+    #include <direct.h>
+    #define mkdir(path, mode) _mkdir(path)
+    #define stat _stat
+    #define S_ISREG(m) (((m) & _S_IFMT) == _S_IFREG)
+    #define PATH_SEPARATOR "\\"
+#else
+    #include <dirent.h>
+    #define PATH_SEPARATOR "/"
+#endif
 
 int gui_init(GuiState *gui) {
     memset(gui, 0, sizeof(GuiState));
@@ -38,23 +51,62 @@ static int is_rom_file(const char *filename) {
 }
 
 int gui_scan_roms(GuiState *gui) {
-    DIR *dir;
-    struct dirent *entry;
     struct stat st;
     char fullpath[MAX_FILENAME_LEN];
     
     gui->rom_count = 0;
     
+#ifdef _WIN32
+    /* Windows implementation using FindFirstFile/FindNextFile */
+    WIN32_FIND_DATAA findData;
+    HANDLE hFind;
+    char searchPath[MAX_FILENAME_LEN];
+    
+    snprintf(searchPath, sizeof(searchPath), "%s\\*", ROM_DIR_PATH);
+    
+    hFind = FindFirstFileA(searchPath, &findData);
+    if (hFind == INVALID_HANDLE_VALUE) {
+        DWORD error = GetLastError();
+        if (error == ERROR_PATH_NOT_FOUND || error == ERROR_FILE_NOT_FOUND) {
+            printf("Warning: Could not open '%s' directory. Creating it...\n", ROM_DIR_PATH);
+            mkdir(ROM_DIR_PATH);
+        }
+        return SUCCESS;
+    }
+    
+    do {
+        /* Skip . and .. */
+        if (strcmp(findData.cFileName, ".") == 0 || strcmp(findData.cFileName, "..") == 0) {
+            continue;
+        }
+        
+        /* Skip directories */
+        if (findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
+            continue;
+        }
+        
+        /* Check if it's a ROM file */
+        if (is_rom_file(findData.cFileName) && gui->rom_count < MAX_ROM_FILES) {
+            snprintf(fullpath, sizeof(fullpath), "%s" PATH_SEPARATOR "%s", ROM_DIR_PATH, findData.cFileName);
+            strncpy(gui->roms[gui->rom_count].filename, findData.cFileName, MAX_FILENAME_LEN - 1);
+            gui->roms[gui->rom_count].filename[MAX_FILENAME_LEN - 1] = '\0';
+            strncpy(gui->roms[gui->rom_count].fullpath, fullpath, MAX_FILENAME_LEN - 1);
+            gui->roms[gui->rom_count].fullpath[MAX_FILENAME_LEN - 1] = '\0';
+            gui->rom_count++;
+        }
+    } while (FindNextFileA(hFind, &findData) != 0 && gui->rom_count < MAX_ROM_FILES);
+    
+    FindClose(hFind);
+#else
+    /* POSIX implementation using dirent */
+    DIR *dir;
+    struct dirent *entry;
+    
     dir = opendir(ROM_DIR_PATH);
     if (!dir) {
         printf("Warning: Could not open '%s' directory. Creating it...\n", ROM_DIR_PATH);
-        /* Try to create the directory */
-        #ifdef _WIN32
-        mkdir(ROM_DIR_PATH);
-        #else
         mkdir(ROM_DIR_PATH, 0755);
-        #endif
-        return SUCCESS; /* Not an error if directory doesn't exist yet */
+        return SUCCESS;
     }
     
     while ((entry = readdir(dir)) != NULL && gui->rom_count < MAX_ROM_FILES) {
@@ -66,16 +118,20 @@ int gui_scan_roms(GuiState *gui) {
         /* Check if it's a ROM file */
         if (is_rom_file(entry->d_name)) {
             /* Verify it's a regular file using stat */
-            snprintf(fullpath, sizeof(fullpath), "%s/%s", ROM_DIR_PATH, entry->d_name);
+            snprintf(fullpath, sizeof(fullpath), "%s" PATH_SEPARATOR "%s", ROM_DIR_PATH, entry->d_name);
             if (stat(fullpath, &st) == 0 && S_ISREG(st.st_mode)) {
                 strncpy(gui->roms[gui->rom_count].filename, entry->d_name, MAX_FILENAME_LEN - 1);
+                gui->roms[gui->rom_count].filename[MAX_FILENAME_LEN - 1] = '\0';
                 strncpy(gui->roms[gui->rom_count].fullpath, fullpath, MAX_FILENAME_LEN - 1);
+                gui->roms[gui->rom_count].fullpath[MAX_FILENAME_LEN - 1] = '\0';
                 gui->rom_count++;
             }
         }
     }
     
     closedir(dir);
+#endif
+    
     return SUCCESS;
 }
 
