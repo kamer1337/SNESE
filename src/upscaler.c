@@ -449,15 +449,18 @@ void upscaler_edge_preserving(const u32 *input, u16 input_width, u16 input_heigh
                               u32 *output, u16 output_width, u16 output_height) {
     u16 out_x, out_y;
     u16 in_x, in_y;
-    u8 scale_x, scale_y;
+    u16 scale_x, scale_y;
     
-    if (!input || !output || input_width == 0 || input_height == 0) {
+    if (!input || !output || input_width == 0 || input_height == 0 || 
+        output_width == 0 || output_height == 0) {
         return;
     }
     
-    scale_x = (u8)(output_width / input_width);
-    scale_y = (u8)(output_height / input_height);
+    /* Calculate scale factors as u16 to avoid truncation */
+    scale_x = output_width / input_width;
+    scale_y = output_height / input_height;
     
+    /* Ensure minimum scale of 1 to prevent division by zero */
     if (scale_x == 0) scale_x = 1;
     if (scale_y == 0) scale_y = 1;
     

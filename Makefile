@@ -150,16 +150,8 @@ help:
 # Test target - only builds tests when explicitly requested
 test:
 	@echo "Building and running test suite..."
-ifeq ($(PLATFORM),windows)
 	@cd tests && $(MAKE) test
-else
-	@cd tests && $(MAKE) test
-endif
 
 # Clean tests
 test-clean:
-ifeq ($(PLATFORM),windows)
 	@cd tests && $(MAKE) clean
-else
-	@cd tests && $(MAKE) clean
-endif

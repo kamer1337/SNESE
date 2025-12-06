@@ -18,8 +18,10 @@
     #define mkdir(path, mode) _mkdir(path)
     #define stat _stat
     #define S_ISREG(m) (((m) & _S_IFMT) == _S_IFREG)
+    #define PATH_SEPARATOR "\\"
 #else
     #include <dirent.h>
+    #define PATH_SEPARATOR "/"
 #endif
 
 int gui_init(GuiState *gui) {
@@ -85,7 +87,7 @@ int gui_scan_roms(GuiState *gui) {
         
         /* Check if it's a ROM file */
         if (is_rom_file(findData.cFileName) && gui->rom_count < MAX_ROM_FILES) {
-            snprintf(fullpath, sizeof(fullpath), "%s/%s", ROM_DIR_PATH, findData.cFileName);
+            snprintf(fullpath, sizeof(fullpath), "%s" PATH_SEPARATOR "%s", ROM_DIR_PATH, findData.cFileName);
             strncpy(gui->roms[gui->rom_count].filename, findData.cFileName, MAX_FILENAME_LEN - 1);
             gui->roms[gui->rom_count].filename[MAX_FILENAME_LEN - 1] = '\0';
             strncpy(gui->roms[gui->rom_count].fullpath, fullpath, MAX_FILENAME_LEN - 1);
@@ -116,7 +118,7 @@ int gui_scan_roms(GuiState *gui) {
         /* Check if it's a ROM file */
         if (is_rom_file(entry->d_name)) {
             /* Verify it's a regular file using stat */
-            snprintf(fullpath, sizeof(fullpath), "%s/%s", ROM_DIR_PATH, entry->d_name);
+            snprintf(fullpath, sizeof(fullpath), "%s" PATH_SEPARATOR "%s", ROM_DIR_PATH, entry->d_name);
             if (stat(fullpath, &st) == 0 && S_ISREG(st.st_mode)) {
                 strncpy(gui->roms[gui->rom_count].filename, entry->d_name, MAX_FILENAME_LEN - 1);
                 gui->roms[gui->rom_count].filename[MAX_FILENAME_LEN - 1] = '\0';
