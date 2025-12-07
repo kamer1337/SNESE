@@ -10,6 +10,7 @@
 /* Declare test suite functions */
 void test_cartridge_suite(void);
 void test_script_suite(void);
+void test_memory_suite(void);
 
 int main(void) {
     test_init();
@@ -17,6 +18,7 @@ int main(void) {
     /* Run all test suites */
     test_cartridge_suite();
     test_script_suite();
+    test_memory_suite();
     
     /* Print summary */
     test_summary();

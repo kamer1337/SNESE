@@ -73,11 +73,20 @@ void test_mymodule_suite(void) {
 - Command execution
 - Script execution from strings and files
 
+### Memory Module
+- Memory initialization and reset
+- WRAM, VRAM, CGRAM, and OAM access
+- 8-bit, 16-bit, and 24-bit read/write operations
+- DMA channel setup and configuration
+- HDMA channel setup
+- Cartridge attachment
+- I/O register space access
+- Memory size constant verification
+
 ## Future Tests
 
-- PPU rendering tests
-- CPU instruction tests
-- Memory mapping tests
+- CPU instruction execution tests (requires global memory refactoring)
+- PPU rendering tests (requires global memory refactoring)
 - Input system tests
 - Game Maker editor tests
 - Integration tests with actual ROM files

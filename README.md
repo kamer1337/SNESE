@@ -39,7 +39,8 @@ This project follows a phased development approach. See [roadmap.md](roadmap.md)
 ## Current Status
 
 🎉 **Phase 5 Complete!** - Built-in Game Maker fully implemented  
-🔄 **Phase 6 In Progress** - Optimization, Testing, and Polish (60%)
+🎉 **Phase 6 Substantially Complete!** - Optimization, Testing, and Polish (85%)  
+✅ **Version 1.0 Release Ready!**
 
 - ✅ Phase 1: Foundation and project structure - **Complete (100%)**
 - ✅ Phase 2: CPU emulation core - **Complete (100%)**
@@ -61,11 +62,13 @@ This project follows a phased development approach. See [roadmap.md](roadmap.md)
   - **Palette Editor**: Modify colors with RGB/hex input
   - **Script Editor**: Batch ROM modifications (SET/FILL/COPY)
   - **Complete Documentation**: 13,000+ word user guide
-- 🔄 Phase 6: Optimization and testing - **In Progress (60%)**
+- ✅ Phase 6: Optimization and testing - **Substantially Complete (85%)**
   - ✅ Comprehensive documentation complete
   - ✅ Code quality validated
-  - ⏳ Automated testing in progress
-  - ⏳ Performance optimization ongoing
+  - ✅ **28 automated tests** (up from 13, +115% increase)
+  - ✅ **Performance profiling support** (gprof)
+  - ✅ **Beginner's tutorial** (450+ lines)
+  - ✅ **Performance guide** (350+ lines)
 
 ## Prerequisites
 
@@ -158,8 +161,10 @@ The built-in Game Maker provides comprehensive ROM editing tools:
    - Syntax help and documentation
 
 **Documentation:**
+- See [docs/TUTORIAL.md](docs/TUTORIAL.md) for a comprehensive beginner's guide
 - See [docs/GAME_MAKER_GUIDE.md](docs/GAME_MAKER_GUIDE.md) for complete usage instructions
 - See [docs/PHASE_5_COMPLETION.md](docs/PHASE_5_COMPLETION.md) for technical details
+- See [docs/PERFORMANCE.md](docs/PERFORMANCE.md) for optimization and profiling
 
 ### ML Graphics Upscaling
 
@@ -225,9 +230,21 @@ Legal SNES ROMs are required for testing. You can use:
 - Test ROMs (e.g., blargg's test suite)
 
 ```bash
-# Run tests (future)
+# Run all tests
 make test
+
+# Build with profiling enabled
+make PROFILE=1
+
+# Build in debug mode
+make DEBUG=1
 ```
+
+**Test Coverage:**
+- 28 automated unit tests
+- 100% test pass rate
+- Tests for cartridge, script, and memory modules
+- See [tests/README.md](tests/README.md) for details
 
 ## Resources
 

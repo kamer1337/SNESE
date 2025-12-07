@@ -4,7 +4,7 @@
 CC = gcc
 CFLAGS = -Wall -Wextra -std=c99 -pedantic -I../include -Iinclude
 LDFLAGS = 
-LIBS = 
+LIBS = -lm 
 
 # Directories
 SRC_DIR = ../src
@@ -15,12 +15,12 @@ BIN_DIR = .
 # Target executable
 TARGET = $(BIN_DIR)/test_runner
 
-# Source files for main project (exclude main.c)
+# Source files for main project (exclude main.c, game_maker.c, gui.c which have main dependencies)
 PROJECT_SOURCES = $(SRC_DIR)/cartridge.c $(SRC_DIR)/memory.c $(SRC_DIR)/script.c
 PROJECT_OBJECTS = $(PROJECT_SOURCES:$(SRC_DIR)/%.c=$(BUILD_DIR)/%.o)
 
 # Test source files
-TEST_SOURCES = test_runner.c test_framework.c test_cartridge.c test_script.c
+TEST_SOURCES = test_runner.c test_framework.c test_cartridge.c test_script.c test_memory.c
 TEST_OBJECTS = $(TEST_SOURCES:%.c=$(BUILD_DIR)/%.o)
 
 # All objects
