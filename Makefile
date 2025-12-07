@@ -46,10 +46,18 @@ HEADERS = $(wildcard $(INC_DIR)/*.h)
 
 # Build configurations
 DEBUG ?= 0
+PROFILE ?= 0
+
 ifeq ($(DEBUG), 1)
     CFLAGS += -g -O0 -DDEBUG
 else
     CFLAGS += -O2
+endif
+
+# Enable profiling with gprof
+ifeq ($(PROFILE), 1)
+    CFLAGS += -pg
+    LDFLAGS += -pg
 endif
 
 # Default target - builds only the emulator (tests excluded by default)
@@ -110,6 +118,10 @@ endif
 debug: DEBUG=1
 debug: clean all
 
+# Build with profiling enabled
+profile: PROFILE=1
+profile: clean all
+
 # Print build information
 info:
 	@echo "SNESE Build Information"
@@ -129,6 +141,7 @@ help:
 	@echo "  all      - Build the emulator (default, tests excluded)"
 	@echo "  clean    - Remove build artifacts"
 	@echo "  debug    - Build with debug symbols"
+	@echo "  profile  - Build with profiling enabled (gprof)"
 	@echo "  test     - Build and run test suite (optional)"
 	@echo "  install  - Install to /usr/local/bin (Linux only)"
 	@echo "  uninstall- Remove from /usr/local/bin (Linux only)"
@@ -136,16 +149,18 @@ help:
 	@echo "  help     - Display this help message"
 	@echo ""
 	@echo "Build options:"
-	@echo "  DEBUG=1  - Enable debug build"
+	@echo "  DEBUG=1   - Enable debug build"
+	@echo "  PROFILE=1 - Enable profiling build"
 	@echo ""
 	@echo "Example usage:"
 	@echo "  make              # Build release version"
 	@echo "  make DEBUG=1      # Build debug version"
+	@echo "  make PROFILE=1    # Build with profiling"
 	@echo "  make clean all    # Clean rebuild"
 	@echo "  make test         # Build and run tests (optional)"
 
 # Phony targets
-.PHONY: all clean install uninstall debug info help test test-clean
+.PHONY: all clean install uninstall debug profile info help test test-clean
 
 # Test target - only builds tests when explicitly requested
 test:
