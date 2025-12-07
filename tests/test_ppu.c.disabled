@@ -1,0 +1,317 @@
+/*
+ * test_ppu.c - PPU emulation tests
+ * 
+ * Tests for the Picture Processing Unit (graphics rendering)
+ */
+
+#include "test_framework.h"
+#include "../include/ppu.h"
+#include "../include/memory.h"
+#include <string.h>
+
+/* Test PPU initialization */
+void test_ppu_initialization(void) {
+    TEST("PPU initialization");
+    
+    PPU ppu;
+    ppu_init(&ppu);
+    
+    /* Verify initial state */
+    ASSERT(ppu.vcount == 0);
+    ASSERT(ppu.hcount == 0);
+    ASSERT(ppu.vblank == false);
+    ASSERT(ppu.forced_blank == false);
+    ASSERT(ppu.frame_count == 0);
+    ASSERT(ppu.needs_render == false);
+    ASSERT(ppu.upscaling_enabled == false);
+    
+    TEST_PASS();
+}
+
+/* Test PPU reset */
+void test_ppu_reset(void) {
+    TEST("PPU reset operation");
+    
+    PPU ppu;
+    ppu_init(&ppu);
+    
+    /* Modify state */
+    ppu.vcount = 100;
+    ppu.frame_count = 1000;
+    ppu.vblank = true;
+    
+    /* Reset */
+    ppu_reset(&ppu);
+    
+    /* Should return to initial state */
+    ASSERT(ppu.vcount == 0);
+    ASSERT(ppu.vblank == false);
+    
+    TEST_PASS();
+}
+
+/* Test PPU memory setup */
+void test_ppu_memory_setup(void) {
+    TEST("PPU memory setup");
+    
+    PPU ppu;
+    Memory mem;
+    
+    ppu_init(&ppu);
+    memory_init(&mem);
+    
+    /* Set memory pointers */
+    ppu_set_memory(&ppu, mem.vram, mem.cgram, mem.oam);
+    
+    /* Verify pointers are set */
+    ASSERT(ppu.vram != NULL);
+    ASSERT(ppu.cgram != NULL);
+    ASSERT(ppu.oam != NULL);
+    
+    TEST_PASS();
+}
+
+/* Test VRAM addressing */
+void test_ppu_vram_addressing(void) {
+    TEST("VRAM addressing");
+    
+    PPU ppu;
+    Memory mem;
+    
+    ppu_init(&ppu);
+    memory_init(&mem);
+    ppu_set_memory(&ppu, mem.vram, mem.cgram, mem.oam);
+    
+    /* Set VRAM address */
+    ppu.vram_addr = 0x1000;
+    ASSERT_EQ(ppu.vram_addr, 0x1000);
+    
+    /* Set increment */
+    ppu.vram_increment = 1;
+    ASSERT_EQ(ppu.vram_increment, 1);
+    
+    /* Set to increment by 32 (for vertical writes) */
+    ppu.vram_increment = 32;
+    ASSERT_EQ(ppu.vram_increment, 32);
+    
+    TEST_PASS();
+}
+
+/* Test CGRAM addressing */
+void test_ppu_cgram_addressing(void) {
+    TEST("CGRAM addressing");
+    
+    PPU ppu;
+    ppu_init(&ppu);
+    
+    /* Set CGRAM address */
+    ppu.cgram_addr = 0x100;
+    ASSERT_EQ(ppu.cgram_addr, 0x100);
+    
+    /* CGRAM is 512 bytes (256 colors * 2 bytes) */
+    ppu.cgram_addr = 0x1FF;
+    ASSERT_EQ(ppu.cgram_addr, 0x1FF);
+    
+    TEST_PASS();
+}
+
+/* Test OAM addressing */
+void test_ppu_oam_addressing(void) {
+    TEST("OAM addressing");
+    
+    PPU ppu;
+    ppu_init(&ppu);
+    
+    /* Set OAM address */
+    ppu.oam_addr = 0x100;
+    ASSERT_EQ(ppu.oam_addr, 0x100);
+    
+    /* OAM is 544 bytes (512 + 32 for size bits) */
+    ppu.oam_addr = 0x21F;
+    ASSERT_EQ(ppu.oam_addr, 0x21F);
+    
+    TEST_PASS();
+}
+
+/* Test background mode */
+void test_ppu_bg_mode(void) {
+    TEST("Background mode setting");
+    
+    PPU ppu;
+    ppu_init(&ppu);
+    
+    /* Test different BG modes (0-7) */
+    for (u8 mode = 0; mode <= 7; mode++) {
+        ppu.bg_mode = mode;
+        ASSERT_EQ(ppu.bg_mode, mode);
+    }
+    
+    TEST_PASS();
+}
+
+/* Test background layer configuration */
+void test_ppu_bg_layers(void) {
+    TEST("Background layer configuration");
+    
+    PPU ppu;
+    ppu_init(&ppu);
+    
+    /* Configure BG1 */
+    ppu.bg[0].tilemap_addr = 0x4000;
+    ppu.bg[0].chr_addr = 0x0000;
+    ppu.bg[0].h_scroll = 100;
+    ppu.bg[0].v_scroll = 50;
+    ppu.bg[0].enabled = true;
+    
+    ASSERT_EQ(ppu.bg[0].tilemap_addr, 0x4000);
+    ASSERT_EQ(ppu.bg[0].chr_addr, 0x0000);
+    ASSERT_EQ(ppu.bg[0].h_scroll, 100);
+    ASSERT_EQ(ppu.bg[0].v_scroll, 50);
+    ASSERT(ppu.bg[0].enabled == true);
+    
+    /* Test all 4 layers exist */
+    for (int i = 0; i < 4; i++) {
+        ppu.bg[i].enabled = true;
+        ASSERT(ppu.bg[i].enabled == true);
+    }
+    
+    TEST_PASS();
+}
+
+/* Test Mode 7 configuration */
+void test_ppu_mode7_config(void) {
+    TEST("Mode 7 configuration");
+    
+    PPU ppu;
+    ppu_init(&ppu);
+    
+    /* Set Mode 7 matrix */
+    ppu.m7_matrix_a = 0x0100;  /* Scale 1.0 */
+    ppu.m7_matrix_b = 0x0000;
+    ppu.m7_matrix_c = 0x0000;
+    ppu.m7_matrix_d = 0x0100;  /* Scale 1.0 */
+    
+    ASSERT_EQ(ppu.m7_matrix_a, 0x0100);
+    ASSERT_EQ(ppu.m7_matrix_d, 0x0100);
+    
+    /* Set Mode 7 center point */
+    ppu.m7_center_x = 128;
+    ppu.m7_center_y = 112;
+    
+    ASSERT_EQ(ppu.m7_center_x, 128);
+    ASSERT_EQ(ppu.m7_center_y, 112);
+    
+    /* Test flip flags */
+    ppu.m7_h_flip = true;
+    ppu.m7_v_flip = false;
+    
+    ASSERT(ppu.m7_h_flip == true);
+    ASSERT(ppu.m7_v_flip == false);
+    
+    TEST_PASS();
+}
+
+/* Test VBlank flag */
+void test_ppu_vblank(void) {
+    TEST("VBlank flag operation");
+    
+    PPU ppu;
+    ppu_init(&ppu);
+    
+    /* Initially not in VBlank */
+    ASSERT(ppu_in_vblank(&ppu) == false);
+    
+    /* Set VBlank */
+    ppu.vblank = true;
+    ASSERT(ppu_in_vblank(&ppu) == true);
+    
+    /* Clear VBlank */
+    ppu.vblank = false;
+    ASSERT(ppu_in_vblank(&ppu) == false);
+    
+    TEST_PASS();
+}
+
+/* Test display control */
+void test_ppu_display_control(void) {
+    TEST("Display control");
+    
+    PPU ppu;
+    ppu_init(&ppu);
+    
+    /* Test brightness (0-15) */
+    ppu.brightness = 15;
+    ASSERT_EQ(ppu.brightness, 15);
+    
+    ppu.brightness = 0;
+    ASSERT_EQ(ppu.brightness, 0);
+    
+    /* Test forced blank */
+    ppu.forced_blank = true;
+    ASSERT(ppu.forced_blank == true);
+    
+    ppu.forced_blank = false;
+    ASSERT(ppu.forced_blank == false);
+    
+    TEST_PASS();
+}
+
+/* Test frame counter */
+void test_ppu_frame_counter(void) {
+    TEST("Frame counter");
+    
+    PPU ppu;
+    ppu_init(&ppu);
+    
+    u32 initial = ppu.frame_count;
+    ASSERT_EQ(initial, 0);
+    
+    /* Frame counter should increment */
+    ppu.frame_count++;
+    ASSERT_EQ(ppu.frame_count, 1);
+    
+    ppu.frame_count += 59;
+    ASSERT_EQ(ppu.frame_count, 60);
+    
+    TEST_PASS();
+}
+
+/* Test upscaling enable/disable */
+void test_ppu_upscaling(void) {
+    TEST("Upscaling control");
+    
+    PPU ppu;
+    ppu_init(&ppu);
+    
+    /* Initially disabled */
+    ASSERT(ppu.upscaling_enabled == false);
+    
+    /* Enable upscaling */
+    ppu_enable_upscaling(&ppu, UPSCALE_2X);
+    ASSERT(ppu.upscaling_enabled == true);
+    
+    /* Disable upscaling */
+    ppu_disable_upscaling(&ppu);
+    ASSERT(ppu.upscaling_enabled == false);
+    
+    TEST_PASS();
+}
+
+/* Test suite runner */
+void test_ppu_suite(void) {
+    TEST_SUITE("PPU Module");
+    
+    test_ppu_initialization();
+    test_ppu_reset();
+    test_ppu_memory_setup();
+    test_ppu_vram_addressing();
+    test_ppu_cgram_addressing();
+    test_ppu_oam_addressing();
+    test_ppu_bg_mode();
+    test_ppu_bg_layers();
+    test_ppu_mode7_config();
+    test_ppu_vblank();
+    test_ppu_display_control();
+    test_ppu_frame_counter();
+    test_ppu_upscaling();
+}
